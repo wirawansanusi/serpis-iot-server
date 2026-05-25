@@ -199,6 +199,18 @@ const styles = `
   .stat .value { font-size: 22px; font-weight: 700; margin-top: 4px; }
   .stat .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
 
+  /* Bar gauge (for metrics with chart_type = 'gauge') */
+  .gauge-track {
+    position: relative; height: 8px; margin: 10px 0 4px;
+    background: var(--hover); border-radius: 999px; overflow: visible;
+  }
+  .gauge-fill { position: absolute; left: 0; top: 0; height: 100%; border-radius: 999px; }
+  .gauge-mark {
+    position: absolute; top: -2px; width: 2px; height: 12px;
+    background: var(--border-strong); transform: translateX(-1px);
+  }
+  .gauge-ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+
   .actions { display: flex; gap: 8px; margin: 8px 0 16px; }
   .actions button, .actions a.btn {
     font: inherit; font-size: 13px;
@@ -247,6 +259,28 @@ const styles = `
   .banner ul { margin: 0; padding-left: 18px; color: var(--warn); font-size: 13px; }
 
   .empty { color: var(--muted); padding: 24px; text-align: center; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+
+  /* Threshold settings */
+  .thresholds { margin-top: 24px; }
+  .thresholds summary {
+    cursor: pointer; font-size: 14px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);
+  }
+  .thr-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .thr-row { display: flex; align-items: center; gap: 8px; margin: 0; }
+  .thr-row .thr-label { flex: 1; font-size: 14px; }
+  .thr-row input {
+    width: 90px; font: inherit; font-size: 14px; padding: 6px 8px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+  }
+  .thr-row input:focus { outline: none; border-color: var(--accent); }
+  .thr-row button {
+    font: inherit; font-size: 13px; padding: 6px 12px;
+    background: var(--card); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+  }
+  .thr-row button:hover { background: var(--hover); }
 `;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

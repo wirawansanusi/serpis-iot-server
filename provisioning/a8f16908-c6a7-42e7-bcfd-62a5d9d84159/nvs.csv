@@ -1,0 +1,4 @@
+key,type,encoding,value
+humid,namespace,,
+pubid,data,string,a8f16908-c6a7-42e7-bcfd-62a5d9d84159
+secret,data,hex2bin,cbd2240c0dc2f6329f27e634fced2e76c942105d89f6ab042c2e918aecb5d495

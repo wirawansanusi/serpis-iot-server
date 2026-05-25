@@ -1,66 +1,132 @@
 -- Run once in the Supabase SQL editor on a fresh project.
+-- Apply order: schema.sql, seed.sql, ingest_function.sql, grants.sql, then cron.sql.
+-- Migrating an existing (temp/humidity) project? Run reset.sql FIRST to drop the
+-- old model (destructive — clean slate, no data migration), then this order.
 -- Enable pg_cron in Dashboard > Database > Extensions before running cron.sql.
+--
+-- Multi-sensor IoT model. A device reports an arbitrary set of *metrics*
+-- (temp_c, humidity, co2, pm25, door_state, ...). Metrics are self-describing:
+-- the first time a device sends a metric key, ingest auto-registers it in the
+-- `metrics` registry (see ingest_function.sql), which holds the display + viz
+-- config that drives the dashboard. No code change is needed for a new sensor.
 
 create extension if not exists pgcrypto;
 
+-- Registry of metric definitions, shared across all devices. Auto-seeded on
+-- first sight by ingest_reading(); editable afterwards. `color` is either a
+-- literal hex (#rrggbb) or one of the theme tokens accent|bad|good|warn, which
+-- the frontend resolves to a CSS variable so it adapts to light/dark mode.
+create table if not exists metrics (
+  key         text primary key,
+  label       text not null,
+  unit        text not null default '',
+  precision   int  not null default 1,
+  chart_type  text not null default 'line'
+                check (chart_type in ('line','area','gauge','bar','state')),
+  axis        text not null default 'left' check (axis in ('left','right')),
+  color       text,
+  default_min real,
+  default_max real,
+  sort_order  int  not null default 100,
+  created_at  timestamptz not null default now()
+);
+
 create table if not exists devices (
-  id              uuid primary key default gen_random_uuid(),
-  mac             text unique not null,
-  name            text,
-  -- Clerk user id (e.g. "user_2NN...") of the account that owns this device.
-  -- Filled by /dashboard/claim. Stays NULL until claimed.
-  owner_user_id   text,
-  humidity_min    real not null default 30,
-  humidity_max    real not null default 65,
-  temp_min        real not null default 10,
-  temp_max        real not null default 35,
-  first_seen      timestamptz not null default now(),
-  last_seen       timestamptz not null default now()
+  id                uuid primary key default gen_random_uuid(),
+  -- Stable external identity (random UUID), injected at provisioning. Safe to
+  -- put in BLE adverts, URLs, and logs. This is what ingest + claim key on.
+  public_device_id  text unique not null,
+  -- Wi-Fi MAC, diagnostic metadata only (no longer the device key).
+  mac               text,
+  name              text,
+  -- Free-text type the device self-reports (e.g. 'humid-sht31', 'air-quality').
+  device_type       text,
+  -- Clerk user id (e.g. "user_2NN...") of the owner. NULL until claimed.
+  owner_user_id     text,
+  -- AES-256-GCM(claim_secret), base64. Injected at provisioning; never exposed.
+  claim_secret_enc  text,
+  claim_state       text not null default 'unclaimed'
+                      check (claim_state in ('unclaimed','claim_pending','claimed','disabled')),
+  claimed_at        timestamptz,
+  firmware_version  text,
+  -- Latest battery status (device status, not a charted metric). power_source is
+  -- 'battery' or 'external'; battery_percent is null while on external power.
+  battery_percent   int,
+  battery_mv        int,
+  power_source      text,
+  first_seen        timestamptz not null default now(),
+  last_seen         timestamptz not null default now()
 );
 create index if not exists devices_owner_idx on devices(owner_user_id);
 
+-- Short-lived server challenges for the BLE claim challenge-response. A row is
+-- created by /api/devices/claim/start and consumed by /complete.
+create table if not exists device_claim_challenges (
+  id                uuid primary key default gen_random_uuid(),
+  public_device_id  text not null references devices(public_device_id) on delete cascade,
+  user_id           text not null,
+  server_challenge  text not null,
+  expires_at        timestamptz not null,
+  used_at           timestamptz,
+  created_at        timestamptz not null default now()
+);
+create index if not exists claim_challenges_lookup_idx
+  on device_claim_challenges (public_device_id, server_challenge);
+create index if not exists claim_challenges_expiry_idx
+  on device_claim_challenges (expires_at);
+
+-- Per-device alert bounds, one row per metric the device reports. A row also
+-- doubles as the record of "this device reports this metric", so the dashboard
+-- reads a device's metric inventory from here (joined to `metrics`). Bounds are
+-- nullable: a null side means no alerting on that side.
+create table if not exists device_metric_thresholds (
+  device_id   uuid not null references devices(id) on delete cascade,
+  metric_key  text not null references metrics(key),
+  min_val     real,
+  max_val     real,
+  primary key (device_id, metric_key)
+);
+
+-- Long/narrow time series: one row per metric per sample.
 create table if not exists readings (
   id          bigserial primary key,
   device_id   uuid not null references devices(id) on delete cascade,
-  temp_c      real not null,
-  humidity    real not null,
-  uptime_ms   bigint,
+  metric_key  text not null references metrics(key),
+  value       real not null,
   recorded_at timestamptz not null default now()
 );
-create index if not exists readings_device_time_idx
-  on readings (device_id, recorded_at desc);
+create index if not exists readings_device_metric_time_idx
+  on readings (device_id, metric_key, recorded_at desc);
 
 create table if not exists readings_hourly (
   device_id    uuid not null references devices(id) on delete cascade,
+  metric_key   text not null references metrics(key),
   hour         timestamptz not null,
-  temp_min     real not null,
-  temp_max     real not null,
-  temp_avg     real not null,
-  hum_min      real not null,
-  hum_max      real not null,
-  hum_avg      real not null,
+  val_min      real not null,
+  val_max      real not null,
+  val_avg      real not null,
   sample_count int  not null,
-  primary key (device_id, hour)
+  primary key (device_id, metric_key, hour)
 );
 
 create table if not exists readings_daily (
   device_id            uuid not null references devices(id) on delete cascade,
+  metric_key           text not null references metrics(key),
   day                  date not null,
-  temp_min             real not null,
-  temp_max             real not null,
-  temp_avg             real not null,
-  hum_min              real not null,
-  hum_max              real not null,
-  hum_avg              real not null,
+  val_min              real not null,
+  val_max              real not null,
+  val_avg              real not null,
   sample_count         int  not null,
   abnormal_event_count int  not null default 0,
-  primary key (device_id, day)
+  primary key (device_id, metric_key, day)
 );
 
+-- Abnormal-condition events, generalized over any metric and direction.
 create table if not exists events (
   id            bigserial primary key,
   device_id     uuid not null references devices(id) on delete cascade,
-  kind          text not null check (kind in ('humidity_high','humidity_low','temp_high','temp_low')),
+  metric_key    text not null references metrics(key),
+  direction     text not null check (direction in ('high','low')),
   started_at    timestamptz not null default now(),
   ended_at      timestamptz,
   peak_value    real not null,
@@ -68,5 +134,5 @@ create table if not exists events (
   threshold     real not null
 );
 create index if not exists events_device_started_idx on events(device_id, started_at desc);
-create unique index if not exists events_one_open_per_kind
-  on events(device_id, kind) where ended_at is null;
+create unique index if not exists events_one_open_per_metric_dir
+  on events(device_id, metric_key, direction) where ended_at is null;

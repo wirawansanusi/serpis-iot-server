@@ -12,6 +12,9 @@
 
 grant select, insert, update, delete on
   public.devices,
+  public.metrics,
+  public.device_metric_thresholds,
+  public.device_claim_challenges,
   public.readings,
   public.readings_hourly,
   public.readings_daily,

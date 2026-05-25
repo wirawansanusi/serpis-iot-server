@@ -25,6 +25,41 @@ export async function renameDevice(formData: FormData): Promise<void> {
   revalidatePath(`/dashboard/${id}`);
 }
 
+export async function setThreshold(formData: FormData): Promise<void> {
+  const { userId } = auth();
+  if (!userId) redirect("/sign-in");
+
+  const deviceId = String(formData.get("deviceId") ?? "");
+  const metricKey = String(formData.get("metric_key") ?? "");
+  if (!deviceId || !metricKey) return;
+
+  // Confirm the device belongs to this user before touching its thresholds.
+  const { data: dev } = await supabase
+    .from("devices")
+    .select("id")
+    .eq("id", deviceId)
+    .eq("owner_user_id", userId)
+    .maybeSingle();
+  if (!dev) return;
+
+  const parse = (v: FormDataEntryValue | null): number | null => {
+    const s = String(v ?? "").trim();
+    if (s === "") return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const { error } = await supabase
+    .from("device_metric_thresholds")
+    .upsert(
+      { device_id: deviceId, metric_key: metricKey, min_val: parse(formData.get("min_val")), max_val: parse(formData.get("max_val")) },
+      { onConflict: "device_id,metric_key" },
+    );
+  if (error) console.error("[setThreshold]", error);
+  revalidatePath(`/dashboard/${deviceId}`);
+  revalidatePath("/dashboard");
+}
+
 export async function deleteDevice(formData: FormData): Promise<void> {
   const { userId } = auth();
   if (!userId) redirect("/sign-in");

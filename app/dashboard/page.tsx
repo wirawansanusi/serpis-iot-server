@@ -23,10 +23,10 @@ export default async function DashboardIndex() {
   return (
     <div className="empty">
       <h1 style={{ fontSize: 20, marginTop: 0 }}>No devices yet</h1>
-      <p>Power on a Humid device and complete the captive-portal setup.</p>
+      <p>Power on a Humid device and complete the captive-portal Wi-Fi setup.</p>
       <p>
-        Once it&apos;s sent at least one reading,{" "}
-        <Link href="/dashboard/claim">claim it</Link> by entering its MAC.
+        Then <Link href="/dashboard/claim">add it</Link> from the Humid mobile app,
+        which pairs over Bluetooth to confirm it&apos;s yours.
       </p>
     </div>
   );

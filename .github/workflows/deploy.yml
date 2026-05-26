@@ -3,6 +3,7 @@ name: Build & Deploy
 on:
   push:
     branches: [main]
+  workflow_dispatch: {}   # lets you trigger a deploy manually from the Actions tab
 
 env:
   IMAGE: ghcr.io/wirawansanusi/humid-server

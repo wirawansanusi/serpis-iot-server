@@ -1,5 +1,5 @@
 # Server-side compose for humid-server. Copy this (and a populated .env) to
-# /opt/humid-server on the VPS. The image is pulled from GHCR by CI/CD.
+# /opt/serpis-iot-server on the VPS. The image is pulled from GHCR by CI/CD.
 #
 # humid-server joins the SAME external Docker network as serpis's Caddy so Caddy
 # can reverse-proxy to it by container name. No published ports — Caddy is the
@@ -7,7 +7,7 @@
 
 services:
   app:
-    image: ghcr.io/wirawansanusi/humid-server:latest
+    image: ghcr.io/wirawansanusi/serpis-iot-server:latest
     container_name: humid-server
     restart: unless-stopped
     env_file:

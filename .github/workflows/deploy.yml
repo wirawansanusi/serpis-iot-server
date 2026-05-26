@@ -6,7 +6,7 @@ on:
   workflow_dispatch: {}   # lets you trigger a deploy manually from the Actions tab
 
 env:
-  IMAGE: ghcr.io/wirawansanusi/humid-server
+  IMAGE: ghcr.io/wirawansanusi/serpis-iot-server
 
 jobs:
   build-and-deploy:
@@ -48,7 +48,7 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u wirawansanusi --password-stdin
-            cd /opt/humid-server
+            cd /opt/serpis-iot-server
             docker compose pull app
             docker compose up -d app
             docker image prune -f

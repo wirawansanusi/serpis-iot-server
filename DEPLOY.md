@@ -6,12 +6,12 @@ mbook/serpis pattern.
 
 - `Dockerfile` / `.dockerignore` — slim Next.js standalone image.
 - `.github/workflows/deploy.yml` — build, push to GHCR, SSH-deploy on push to `main`.
-- `deploy/` — files that live **on the server** under `/opt/humid-server`.
+- `deploy/` — files that live **on the server** under `/opt/serpis-iot-server`.
 
 ## 1. One-time server setup (on the VPS)
 
 ```bash
-sudo mkdir -p /opt/humid-server && cd /opt/humid-server
+sudo mkdir -p /opt/serpis-iot-server && cd /opt/serpis-iot-server
 # copy deploy/docker-compose.yml here, then:
 cp /path/to/deploy/.env.server.example .env   # fill in the real secrets
 ```
@@ -43,7 +43,7 @@ to GHCR, then SSHes in and runs `docker compose pull app && up -d app`.
 
 First run order matters: complete step 1 (compose + `.env` + network + Caddy on
 the server) **before** the first workflow run, since the deploy step expects
-`/opt/humid-server/docker-compose.yml` to exist.
+`/opt/serpis-iot-server/docker-compose.yml` to exist.
 
 ## 4. Database
 

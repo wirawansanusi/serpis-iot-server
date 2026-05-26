@@ -1,11 +1,11 @@
 # Deploying humid-server
 
-Production setup: **Bitbucket Pipelines → GHCR → Docker on the existing VPS,
+Production setup: **GitHub Actions → GHCR → Docker on the existing VPS,
 reverse-proxied by the shared Caddy** (same box as serpis). Mirrors the
 mbook/serpis pattern.
 
 - `Dockerfile` / `.dockerignore` — slim Next.js standalone image.
-- `bitbucket-pipelines.yml` — build, push to GHCR, SSH-deploy on push to `main`.
+- `.github/workflows/deploy.yml` — build, push to GHCR, SSH-deploy on push to `main`.
 - `deploy/` — files that live **on the server** under `/opt/humid-server`.
 
 ## 1. One-time server setup (on the VPS)
@@ -25,22 +25,24 @@ cp /path/to/deploy/.env.server.example .env   # fill in the real secrets
   to the serpis Caddyfile and reload Caddy.
 - **DNS**: point `humid.<domain>` (A/AAAA) at the VPS so Caddy can issue a cert.
 
-## 2. Bitbucket setup
+## 2. GitHub setup
 
-- Push this repo to Bitbucket; enable **Pipelines**.
-- **Repository variables** (Settings → Repository variables; secure the secrets):
-  `GHCR_USERNAME`, `GHCR_TOKEN` (GitHub PAT: `write:packages`,`read:packages`),
-  `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `VPS_HOST`, `VPS_USER`.
-- **SSH**: add a deploy key under Settings → SSH keys, put its public key in the
-  VPS deploy user's `~/.ssh/authorized_keys`, and add the VPS to *Known hosts*.
+- Push this repo to GitHub (Actions runs `.github/workflows/deploy.yml`).
+- **Repository secrets** (Settings → Secrets and variables → Actions):
+  `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`
+  (the deploy private key), and `GHCR_TOKEN` (a GitHub PAT with `read:packages`
+  for the *server-side* pull).
+- Pushing the image to GHCR uses the workflow's built-in `GITHUB_TOKEN` (no
+  secret needed). Put the deploy key's **public** half in the VPS user's
+  `~/.ssh/authorized_keys`.
 
 ## 3. Deploy
 
-Push to `main` → the pipeline builds the image, pushes `:latest` + `:<commit>`
+Push to `main` → the workflow builds the image, pushes `:latest` + `:<sha>`
 to GHCR, then SSHes in and runs `docker compose pull app && up -d app`.
 
 First run order matters: complete step 1 (compose + `.env` + network + Caddy on
-the server) **before** the first pipeline run, since the deploy step expects
+the server) **before** the first workflow run, since the deploy step expects
 `/opt/humid-server/docker-compose.yml` to exist.
 
 ## 4. Database

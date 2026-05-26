@@ -1,0 +1,25 @@
+# Server-side compose for humid-server. Copy this (and a populated .env) to
+# /opt/humid-server on the VPS. The image is pulled from GHCR by CI/CD.
+#
+# humid-server joins the SAME external Docker network as serpis's Caddy so Caddy
+# can reverse-proxy to it by container name. No published ports — Caddy is the
+# only ingress.
+
+services:
+  app:
+    image: ghcr.io/wirawansanusi/humid-server:latest
+    container_name: humid-server
+    restart: unless-stopped
+    env_file:
+      - .env            # runtime secrets — see .env.server.example (never committed)
+    expose:
+      - "3000"          # internal to the Docker network; not published to the host
+    networks:
+      - web
+
+networks:
+  web:
+    external: true
+    # CHANGE THIS to the network serpis's Caddy container is attached to. Find it:
+    #   docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' <caddy-container>
+    name: web

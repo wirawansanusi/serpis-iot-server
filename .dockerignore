@@ -1,0 +1,13 @@
+.git
+.github
+.next
+node_modules
+.env
+.env.local
+.env*.local
+# Per-device provisioning output — plaintext claim secrets, never in an image.
+provisioning
+# Local-only tooling/docs not needed in the image.
+deploy
+*.md
+.DS_Store

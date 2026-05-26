@@ -1,0 +1,13 @@
+# Add this site block to the existing Caddyfile on the VPS (the one serpis uses),
+# then reload Caddy (per your serpis setup), e.g.:
+#   docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
+#
+# Prerequisite: point a DNS A/AAAA record for this hostname at the VPS first —
+# Caddy then provisions a Let's Encrypt certificate automatically.
+#
+# `humid-server` resolves to the app container because both share the external
+# Docker network (see deploy/docker-compose.yml).
+
+humid.YOUR_DOMAIN.com {
+    reverse_proxy humid-server:3000
+}

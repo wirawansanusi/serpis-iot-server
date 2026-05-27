@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 const KEY_RE = /^[a-z0-9_]{1,32}$/;
 const CHART_TYPES: ChartType[] = ["line", "area", "gauge", "bar", "state"];
 const BLE_WINDOW_SECONDS = 300;
+const MAX_SAMPLE_AGE_MS = 24 * 60 * 60 * 1000;
 
 type IngestMetric = {
   key: string;
@@ -90,6 +91,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { public_device_id, mac, device_type, firmware_version, uptime_ms, metrics,
+    sample_age_ms, sample_seq,
     battery_mv, battery_percent, power_source } = body as Record<string, unknown>;
 
   if (typeof public_device_id !== "string" || public_device_id.length === 0 || public_device_id.length > 64) {
@@ -103,6 +105,16 @@ export async function POST(req: NextRequest) {
   if (uptime_ms !== undefined && !isFiniteNumber(uptime_ms)) {
     return NextResponse.json({ error: "uptime_ms must be a number if present" }, { status: 400 });
   }
+  if (sample_seq !== undefined && !isFiniteNumber(sample_seq)) {
+    return NextResponse.json({ error: "sample_seq must be a number if present" }, { status: 400 });
+  }
+  if (sample_age_ms !== undefined && !isFiniteNumber(sample_age_ms)) {
+    return NextResponse.json({ error: "sample_age_ms must be a number if present" }, { status: 400 });
+  }
+  const sampleAgeMs = isFiniteNumber(sample_age_ms)
+    ? Math.max(0, Math.min(MAX_SAMPLE_AGE_MS, Math.round(sample_age_ms)))
+    : 0;
+  const recordedAt = new Date(Date.now() - sampleAgeMs).toISOString();
 
   // Battery status (device status, not charted): top-level fields from firmware.
   const batteryMv = isFiniteNumber(battery_mv) ? Math.round(battery_mv) : null;
@@ -139,6 +151,7 @@ export async function POST(req: NextRequest) {
         p_public_id: public_device_id,
         p_device_type: typeof device_type === "string" ? device_type.slice(0, 64) : null,
         p_metrics: normalized,
+        p_recorded_at: recordedAt,
       });
       if (error) {
         console.error("[ingest] ingest_reading error", error);

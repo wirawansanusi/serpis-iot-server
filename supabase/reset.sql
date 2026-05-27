@@ -7,6 +7,7 @@
 -- Drop old and new RPC signatures if present.
 drop function if exists ingest_reading(text, real, real, bigint);
 drop function if exists ingest_reading(text, text, jsonb);
+drop function if exists ingest_reading(text, text, jsonb, timestamptz);
 drop function if exists device_touch(text, text, text, text);
 drop function if exists device_touch(text, text, text, text, int, int, text);
 drop function if exists claim_device(text, text);

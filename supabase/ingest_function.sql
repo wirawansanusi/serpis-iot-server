@@ -62,30 +62,40 @@ begin
 end;
 $$;
 
+drop function if exists ingest_reading(text, text, jsonb);
+
 -- Atomic multi-metric ingest, keyed by public_device_id. Called only once a
 -- device is claimed (heartbeat-only until then). Auto-registers unknown metric
 -- keys, stores readings, seeds per-device thresholds, opens/closes high/low
 -- events. p_metrics is a JSONB array of { key, value, unit?, label?, chart_type? }.
 create or replace function ingest_reading(
-  p_public_id text,
+  p_public_id   text,
   p_device_type text,
-  p_metrics     jsonb
+  p_metrics     jsonb,
+  p_recorded_at timestamptz default now()
 ) returns void
 language plpgsql
 security definer
 as $$
 declare
-  v_device  devices%rowtype;
-  v_metric  jsonb;
-  v_key     text;
-  v_value   real;
-  v_thr     device_metric_thresholds%rowtype;
-  v_count   int;
-  v_palette text[] := array[
+  v_device      devices%rowtype;
+  v_metric      jsonb;
+  v_key         text;
+  v_value       real;
+  v_recorded_at timestamptz := coalesce(p_recorded_at, now());
+  v_thr         device_metric_thresholds%rowtype;
+  v_count       int;
+  v_palette     text[] := array[
     '#4d9fff','#ef6b63','#3ec07a','#f0c46a',
     '#a78bfa','#22b8cf','#f06595','#94d82d'
   ];
 begin
+  if v_recorded_at > now() + interval '1 minute' then
+    v_recorded_at := now();
+  elsif v_recorded_at < now() - interval '7 days' then
+    v_recorded_at := now() - interval '7 days';
+  end if;
+
   select * into v_device from devices where public_device_id = p_public_id;
   if not found then
     return;  -- unknown device; device_touch normally creates the row first
@@ -108,8 +118,8 @@ begin
       )
       on conflict (key) do nothing;
 
-    insert into readings (device_id, metric_key, value)
-      values (v_device.id, v_key, v_value);
+    insert into readings (device_id, metric_key, value, recorded_at)
+      values (v_device.id, v_key, v_value, v_recorded_at);
 
     insert into device_metric_thresholds (device_id, metric_key, min_val, max_val)
       select v_device.id, v_key, m.default_min, m.default_max
@@ -121,28 +131,28 @@ begin
 
     -- high event
     if v_thr.max_val is not null and v_value > v_thr.max_val then
-      insert into events (device_id, metric_key, direction, peak_value, trigger_value, threshold)
-        values (v_device.id, v_key, 'high', v_value, v_value, v_thr.max_val)
+      insert into events (device_id, metric_key, direction, started_at, peak_value, trigger_value, threshold)
+        values (v_device.id, v_key, 'high', v_recorded_at, v_value, v_value, v_thr.max_val)
         on conflict (device_id, metric_key, direction) where ended_at is null do nothing;
       update events set peak_value = greatest(peak_value, v_value)
         where device_id = v_device.id and metric_key = v_key
           and direction = 'high' and ended_at is null;
     else
-      update events set ended_at = now()
+      update events set ended_at = v_recorded_at
         where device_id = v_device.id and metric_key = v_key
           and direction = 'high' and ended_at is null;
     end if;
 
     -- low event
     if v_thr.min_val is not null and v_value < v_thr.min_val then
-      insert into events (device_id, metric_key, direction, peak_value, trigger_value, threshold)
-        values (v_device.id, v_key, 'low', v_value, v_value, v_thr.min_val)
+      insert into events (device_id, metric_key, direction, started_at, peak_value, trigger_value, threshold)
+        values (v_device.id, v_key, 'low', v_recorded_at, v_value, v_value, v_thr.min_val)
         on conflict (device_id, metric_key, direction) where ended_at is null do nothing;
       update events set peak_value = least(peak_value, v_value)
         where device_id = v_device.id and metric_key = v_key
           and direction = 'low' and ended_at is null;
     else
-      update events set ended_at = now()
+      update events set ended_at = v_recorded_at
         where device_id = v_device.id and metric_key = v_key
           and direction = 'low' and ended_at is null;
     end if;

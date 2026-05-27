@@ -2,16 +2,18 @@
 -- it renders exactly as before (humidity on the left axis, temperature on the
 -- right) with its original alert thresholds. Run once after schema.sql.
 --
--- `color` uses theme tokens (accent|bad) instead of literal hex so these two
--- adapt to light/dark mode the way the original chart did. Any *other* metric a
--- device reports is auto-registered by ingest_reading() with a palette hex.
+-- `color` uses theme tokens (accent|good|bad|warn) instead of literal hex so
+-- these adapt to light/dark mode the way the original chart did. Both default
+-- to `accent` (blue) so the charts reserve red for out-of-range readings. Any
+-- *other* metric a device reports is auto-registered by ingest_reading() with a
+-- palette hex.
 --
 -- Idempotent: re-running refreshes the display config without touching data.
 
 insert into metrics (key, label, unit, precision, chart_type, axis, color, default_min, default_max, sort_order)
 values
-  ('humidity', 'Humidity',    '%',  1, 'line', 'left',  'accent', 30, 65, 10),
-  ('temp_c',   'Temperature', '°C', 1, 'line', 'right', 'bad',    10, 35, 20)
+  ('humidity', 'Humidity',    '%',  1, 'line', 'left',  'accent', 40, 50, 10),
+  ('temp_c',   'Temperature', '°C', 1, 'line', 'right', 'accent', 10, 35, 20)
 on conflict (key) do update set
   label       = excluded.label,
   unit        = excluded.unit,

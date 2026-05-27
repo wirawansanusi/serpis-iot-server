@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { supabase } from "@/lib/supabase";
 import type { ChartType } from "@/lib/metrics";
+import { persistOtaStatus, computeIngestOffer, type OtaStatusReport } from "@/lib/ota";
 
 export const dynamic = "force-dynamic";
 
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { public_device_id, mac, device_type, firmware_version, uptime_ms, metrics,
-    sample_age_ms, sample_seq,
+    sample_age_ms, sample_seq, ota_status,
     battery_mv, battery_percent, power_source } = body as Record<string, unknown>;
 
   if (typeof public_device_id !== "string" || public_device_id.length === 0 || public_device_id.length > 64) {
@@ -123,6 +124,22 @@ export async function POST(req: NextRequest) {
     : null;
   const powerSrc = power_source === "external" || power_source === "battery" ? power_source : null;
 
+  // Optional firmware-reported OTA status. Sanitized to known fields; unknown
+  // status strings are kept for forward compatibility.
+  let otaStatusReport: OtaStatusReport | null = null;
+  if (ota_status && typeof ota_status === "object") {
+    const s = ota_status as Record<string, unknown>;
+    if (typeof s.status === "string") {
+      otaStatusReport = {
+        status: s.status.slice(0, 32),
+        target_version: typeof s.target_version === "string" ? s.target_version.slice(0, 32) : undefined,
+        running_version: typeof s.running_version === "string" ? s.running_version.slice(0, 32) : undefined,
+        error_code: isFiniteNumber(s.error_code) ? Math.round(s.error_code) : undefined,
+        message: typeof s.message === "string" ? s.message.slice(0, 500) : undefined,
+      };
+    }
+  }
+
   // Always touch the device (heartbeat) and learn its claim state.
   const { data: state, error: touchErr } = await supabase.rpc("device_touch", {
     p_public_id: public_device_id,
@@ -140,25 +157,45 @@ export async function POST(req: NextRequest) {
 
   const claimState = typeof state === "string" ? state : "unclaimed";
 
-  // Store readings only once claimed (heartbeat-only until then).
-  if (claimState === "claimed" && metrics !== undefined) {
-    const normalized = normalizeMetrics(metrics);
-    if (typeof normalized === "string") {
-      return NextResponse.json({ error: normalized }, { status: 400 });
-    }
-    if (normalized.length > 0) {
-      const { error } = await supabase.rpc("ingest_reading", {
-        p_public_id: public_device_id,
-        p_device_type: typeof device_type === "string" ? device_type.slice(0, 64) : null,
-        p_metrics: normalized,
-        p_recorded_at: recordedAt,
-      });
-      if (error) {
-        console.error("[ingest] ingest_reading error", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+  let otaOffer = null;
+
+  // Readings + OTA only once claimed (heartbeat-only until then).
+  if (claimState === "claimed") {
+    if (metrics !== undefined) {
+      const normalized = normalizeMetrics(metrics);
+      if (typeof normalized === "string") {
+        return NextResponse.json({ error: normalized }, { status: 400 });
       }
+      if (normalized.length > 0) {
+        const { error } = await supabase.rpc("ingest_reading", {
+          p_public_id: public_device_id,
+          p_device_type: typeof device_type === "string" ? device_type.slice(0, 64) : null,
+          p_metrics: normalized,
+          p_recorded_at: recordedAt,
+        });
+        if (error) {
+          console.error("[ingest] ingest_reading error", error);
+          return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+      }
+    }
+
+    // Look up the device row (device_touch only returns claim_state) to record
+    // OTA status and decide whether to offer an update.
+    const { data: device } = await supabase
+      .from("devices")
+      .select("id, device_type, firmware_version, battery_percent, power_source")
+      .eq("public_device_id", public_device_id)
+      .maybeSingle();
+    if (device) {
+      // Persist any reported status BEFORE computing the offer, so a fresh
+      // failure blocks re-offering the same version in this same response.
+      if (otaStatusReport) await persistOtaStatus(device.id, otaStatusReport);
+      const baseUrl = process.env.OTA_BASE_URL ?? new URL(req.url).origin;
+      otaOffer = await computeIngestOffer(device, baseUrl);
     }
   }
 
-  return NextResponse.json(controlResponse(claimState));
+  const response = controlResponse(claimState);
+  return NextResponse.json(otaOffer ? { ...response, ota: otaOffer } : response);
 }

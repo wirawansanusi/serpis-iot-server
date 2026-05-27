@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
+import { buildMobileFirmware } from "@/lib/ota";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -25,6 +26,7 @@ type DeviceRow = {
   name: string | null;
   device_type: string | null;
   last_seen: string;
+  firmware_version: string | null;
   battery_percent: number | null;
   battery_mv: number | null;
   power_source: string | null;
@@ -100,7 +102,7 @@ export async function GET(req: NextRequest) {
 
   const { data: deviceRows, error: devicesError } = await supabase
     .from("devices")
-    .select("id, mac, name, device_type, last_seen, battery_percent, battery_mv, power_source")
+    .select("id, mac, name, device_type, last_seen, firmware_version, battery_percent, battery_mv, power_source")
     .eq("owner_user_id", userId)
     .order("last_seen", { ascending: false });
 
@@ -301,6 +303,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "server_error" }, { status: 500 });
   }
 
+  const firmware = await buildMobileFirmware(selectedDevice);
+
   return NextResponse.json({
     range,
     devices,
@@ -318,6 +322,7 @@ export async function GET(req: NextRequest) {
         power_source: selectedDevice.power_source,
         open_event_count: openEventsByDevice.get(selectedDevice.id) ?? 0,
       },
+      firmware,
       metrics: selectedMetrics,
       stats: selectedMetrics.map(
         (metric) =>

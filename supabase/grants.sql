@@ -18,7 +18,9 @@ grant select, insert, update, delete on
   public.readings,
   public.readings_hourly,
   public.readings_daily,
-  public.events
+  public.events,
+  public.firmware_releases,
+  public.device_ota
 to service_role;
 
 grant usage, select on all sequences in schema public to service_role;

@@ -136,3 +136,52 @@ create table if not exists events (
 create index if not exists events_device_started_idx on events(device_id, started_at desc);
 create unique index if not exists events_one_open_per_metric_dir
   on events(device_id, metric_key, direction) where ended_at is null;
+
+-- OTA firmware releases. One row per (device_type, version) artifact, whose
+-- bytes live in object storage (Tencent COS) under `cos_key`. A release is
+-- immutable once `enabled` (enforced in app code). `min/max_current_version`
+-- bound which running versions the release applies to (inclusive, semver;
+-- null = unbounded).
+create table if not exists firmware_releases (
+  id                  uuid primary key default gen_random_uuid(),
+  device_type         text not null,
+  version             text not null,
+  cos_key             text not null,
+  sha256              text not null check (char_length(sha256) = 64),
+  size_bytes          bigint not null check (size_bytes > 0),
+  release_notes       text,
+  min_current_version text,
+  max_current_version text,
+  enabled             boolean not null default false,
+  mandatory           boolean not null default false,
+  created_at          timestamptz not null default now(),
+  created_by          text,
+  unique (device_type, version)
+);
+create index if not exists firmware_releases_type_enabled_idx
+  on firmware_releases (device_type, enabled);
+
+-- Per-device OTA state machine + last reported status (one row per device).
+-- The offer is computed at ingest time from firmware_releases + this row:
+--   * update_requested_version: the version the user opted into (Start update);
+--     optional releases are only offered when this matches.
+--   * dismissed_version: an optional version the user dismissed.
+--   * failed_version: blocks re-offering that version until Retry clears it.
+--   * offered_at: when an offer was last returned (drives the "installing"
+--     staleness timeout in the UI).
+create table if not exists device_ota (
+  device_id                uuid primary key references devices(id) on delete cascade,
+  target_version           text,
+  ota_state                text not null default 'idle'
+                             check (ota_state in ('idle','available','offered','downloading',
+                                                  'deferred','failed','installed','rolled_back')),
+  update_requested_version text,
+  dismissed_version        text,
+  failed_version           text,
+  offered_at               timestamptz,
+  last_status              text,
+  last_error_code          int,
+  last_message             text,
+  last_at                  timestamptz,
+  updated_at               timestamptz not null default now()
+);

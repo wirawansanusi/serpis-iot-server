@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { isAdminUser } from "@/lib/admin";
 import { SidebarLink } from "./SidebarLink";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -89,6 +90,11 @@ export async function Sidebar({ userId }: { userId: string }) {
     <aside className="sidebar">
       <h2>Devices</h2>
       <Link href="/dashboard/claim" className="add-btn">+ Add device</Link>
+      {isAdminUser(userId) ? (
+        <Link href="/dashboard/firmware" className="add-btn" style={{ background: "transparent", color: "var(--accent)", border: "1px solid var(--border)" }}>
+          Firmware
+        </Link>
+      ) : null}
       <nav>
         {devices.length === 0 ? (
           <p className="empty">No devices yet.</p>

@@ -281,6 +281,26 @@ const styles = `
     border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
   }
   .thr-row button:hover { background: var(--hover); }
+
+  /* Firmware admin */
+  .notice { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 14px; }
+  .notice.ok  { background: var(--good-bg); color: var(--good); border: 1px solid var(--good); }
+  .notice.err { background: var(--bad-bg);  color: var(--bad);  border: 1px solid var(--bad); }
+  form.fw-upload { max-width: 520px; }
+  form.fw-upload .fw-range { display: flex; gap: 12px; }
+  form.fw-upload .fw-range label { flex: 1; }
+  form.fw-upload .fw-check { flex-direction: row; align-items: center; gap: 8px; font-weight: 400; color: var(--text); }
+  form.fw-upload .fw-check input { width: auto; }
+  table form { margin: 0; }
+  table form button {
+    font: inherit; font-size: 12px; padding: 4px 10px;
+    background: var(--card); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+  }
+  table form button:hover { background: var(--hover); }
+  table form button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  table form button.danger { color: var(--bad); border-color: var(--bad); }
+  table form button.danger:hover { background: var(--bad-bg); }
 `;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

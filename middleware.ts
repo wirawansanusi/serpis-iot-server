@@ -8,7 +8,8 @@ export default clerkMiddleware((auth, req) => {
 
 export const config = {
   matcher: [
-    // Skip Next.js internals, static files, and the device ingest endpoint.
-    "/((?!api/ingest(?:/|$)|_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    // Skip Next.js internals, static files, and the device-facing endpoints
+    // (ingest + firmware download authenticate with the shared device token).
+    "/((?!api/ingest(?:/|$)|api/firmware/download(?:/|$)|_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
   ],
 };

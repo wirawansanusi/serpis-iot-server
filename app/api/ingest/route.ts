@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { timingSafeEqual } from "crypto";
 import { supabase } from "@/lib/supabase";
 import type { ChartType } from "@/lib/metrics";
 import { persistOtaStatus, computeIngestOffer, type OtaStatusReport } from "@/lib/ota";
+import { tokenOk } from "@/lib/device-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -18,15 +18,6 @@ type IngestMetric = {
   label?: string;
   chart_type?: ChartType;
 };
-
-function tokenOk(provided: string | null): boolean {
-  const expected = process.env.INGEST_TOKEN;
-  if (!provided || !expected) return false;
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
 
 function isFiniteNumber(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);

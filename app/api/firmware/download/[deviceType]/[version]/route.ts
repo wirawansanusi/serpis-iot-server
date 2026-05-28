@@ -1,22 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { timingSafeEqual, createHash } from "crypto";
+import { createHash } from "crypto";
 import { supabase } from "@/lib/supabase";
 import { findDownloadableRelease } from "@/lib/ota";
 import { getTencentCosObject } from "@/lib/tencent-cos";
+import { tokenOk } from "@/lib/device-auth";
 
 export const dynamic = "force-dynamic";
-
-// Devices authenticate with the same shared token they use for ingest. We
-// additionally require the device to be a claimed device of the requested type
-// (the binary isn't secret, but this keeps the endpoint to real devices).
-function tokenOk(provided: string | null): boolean {
-  const expected = process.env.INGEST_TOKEN;
-  if (!provided || !expected) return false;
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
 
 export async function GET(req: NextRequest, { params }: { params: { deviceType: string; version: string } }) {
   if (!tokenOk(req.headers.get("x-device-token"))) {

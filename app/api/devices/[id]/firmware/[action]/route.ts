@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
-import { requestUpdate, retryUpdate, dismissUpdate } from "@/lib/ota";
+import { requestUpdate, retryUpdate } from "@/lib/ota";
 
 export const dynamic = "force-dynamic";
 
 // Mobile firmware actions. Status is read via /api/dashboard (folded in); these
 // only mutate per-device OTA intent and return the refreshed firmware summary.
-const HANDLERS = { update: requestUpdate, retry: retryUpdate, dismiss: dismissUpdate } as const;
+// No dismiss: firmware updates can't be ignored — the notification persists
+// until the user actually updates.
+const HANDLERS = { update: requestUpdate, retry: retryUpdate } as const;
 
 export async function POST(req: NextRequest, { params }: { params: { id: string; action: string } }) {
   const { userId } = auth();

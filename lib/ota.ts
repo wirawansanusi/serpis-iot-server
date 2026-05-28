@@ -1,6 +1,6 @@
 // OTA firmware update logic, shared by the ingest route (compute offers + record
 // device-reported status), the dashboard route (mobile-facing summary), and the
-// mobile action endpoints (start / retry / dismiss).
+// mobile action endpoints (start / retry).
 //
 // Model (MVP, per ota-firmware-update-prd.md): `firmware_releases` holds the
 // artifacts; `device_ota` holds per-device state. An optional release is only
@@ -32,7 +32,6 @@ export type DeviceOtaRow = {
   target_version: string | null;
   ota_state: string;
   update_requested_version: string | null;
-  dismissed_version: string | null;
   failed_version: string | null;
   offered_at: string | null;
   last_status: string | null;
@@ -229,11 +228,11 @@ export async function computeIngestOffer(device: DeviceLike, baseUrl: string): P
   // Blocked after a failure/rollback on this exact version until Retry clears it.
   if (ota?.failed_version && !versionsDiffer(best.version, ota.failed_version)) return null;
 
-  // Optional releases require an explicit opt-in and respect a dismissal.
+  // Optional releases require an explicit opt-in (the user tapping "Update now"
+  // in the app). Mandatory releases are offered automatically.
   if (!best.mandatory) {
     const optedIn = ota?.update_requested_version && !versionsDiffer(best.version, ota.update_requested_version);
     if (!optedIn) return null;
-    if (ota?.dismissed_version && !versionsDiffer(best.version, ota.dismissed_version)) return null;
   }
 
   const url = `${baseUrl.replace(/\/$/, "")}/api/firmware/download/${encodeURIComponent(device.device_type)}/${encodeURIComponent(best.version)}`;
@@ -336,7 +335,6 @@ export async function requestUpdate(device: DeviceLike): Promise<MobileFirmware>
   if (best) {
     await upsertDeviceOta(device.id, {
       update_requested_version: best.version,
-      dismissed_version: null,
       ota_state: "available",
     });
   }
@@ -350,21 +348,7 @@ export async function retryUpdate(device: DeviceLike): Promise<MobileFirmware> {
     await upsertDeviceOta(device.id, {
       update_requested_version: best.version,
       failed_version: null,
-      dismissed_version: null,
       ota_state: "available",
-    });
-  }
-  return buildMobileFirmware(device);
-}
-
-// Dismiss an optional update for the latest applicable version.
-export async function dismissUpdate(device: DeviceLike): Promise<MobileFirmware> {
-  const best = device.device_type ? await findBestEnabledRelease(device.device_type, device.firmware_version) : null;
-  if (best) {
-    await upsertDeviceOta(device.id, {
-      dismissed_version: best.version,
-      update_requested_version: null,
-      ota_state: "idle",
     });
   }
   return buildMobileFirmware(device);

@@ -42,3 +42,8 @@ select cron.schedule('purge_readings', '0 3 * * *',
 -- Purge hourly rollups older than 90 days, weekly Sunday at 04:00.
 select cron.schedule('purge_hourly', '0 4 * * 0',
   $$delete from readings_hourly where hour < now() - interval '90 days'$$);
+
+-- Purge daily rollups older than 1 year, weekly Sunday at 04:10. Bounds the
+-- only otherwise-unbounded table; daily rows are tiny so a year is cheap.
+select cron.schedule('purge_daily', '10 4 * * 0',
+  $$delete from readings_daily where day < (now() - interval '1 year')::date$$);

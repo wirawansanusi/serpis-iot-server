@@ -29,7 +29,6 @@ create table if not exists device_ota (
                              check (ota_state in ('idle','available','offered','downloading',
                                                   'deferred','failed','installed','rolled_back')),
   update_requested_version text,
-  dismissed_version        text,
   failed_version           text,
   offered_at               timestamptz,
   last_status              text,

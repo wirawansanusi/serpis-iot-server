@@ -165,10 +165,11 @@ create index if not exists firmware_releases_type_enabled_idx
 -- The offer is computed at ingest time from firmware_releases + this row:
 --   * update_requested_version: the version the user opted into (Start update);
 --     optional releases are only offered when this matches.
---   * dismissed_version: an optional version the user dismissed.
 --   * failed_version: blocks re-offering that version until Retry clears it.
 --   * offered_at: when an offer was last returned (drives the "installing"
 --     staleness timeout in the UI).
+-- Updates can't be dismissed by the user — the notification persists until they
+-- actually update.
 create table if not exists device_ota (
   device_id                uuid primary key references devices(id) on delete cascade,
   target_version           text,
@@ -176,7 +177,6 @@ create table if not exists device_ota (
                              check (ota_state in ('idle','available','offered','downloading',
                                                   'deferred','failed','installed','rolled_back')),
   update_requested_version text,
-  dismissed_version        text,
   failed_version           text,
   offered_at               timestamptz,
   last_status              text,

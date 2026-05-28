@@ -131,9 +131,13 @@ function currentInRange(current: string, min: string | null, max: string | null)
 
 // --- Release selection ---------------------------------------------------
 
-// Best enabled release for this device type that applies to `currentVersion`
-// (differs from current, current within version range), preferring the highest
-// version (semver, falling back to newest created_at).
+// Best enabled release for this device type that's a true upgrade from
+// `currentVersion`: release version must be STRICTLY GREATER than current
+// (semver), the device must fall inside the release's version range, and
+// among all qualifying upgrades we pick the highest version. A fresh device
+// (currentVersion null) is eligible for any enabled release. If the version
+// strings can't be parsed as semver we refuse the release rather than risk
+// a downgrade or sideways offer.
 export async function findBestEnabledRelease(
   deviceType: string,
   currentVersion: string | null,
@@ -149,8 +153,11 @@ export async function findBestEnabledRelease(
   }
 
   const candidates = (data as FirmwareRelease[]).filter((r) => {
-    if (currentVersion && !versionsDiffer(currentVersion, r.version)) return false;
-    if (currentVersion && !currentInRange(currentVersion, r.min_current_version, r.max_current_version)) return false;
+    if (currentVersion === null) return true; // no firmware reported yet — any enabled release is fair game
+    const cmp = compareVersions(currentVersion, r.version);
+    if (cmp === null) return false; // unparseable — don't risk a downgrade
+    if (cmp >= 0) return false; // release is same as or older than current
+    if (!currentInRange(currentVersion, r.min_current_version, r.max_current_version)) return false;
     return true;
   });
   if (candidates.length === 0) return null;

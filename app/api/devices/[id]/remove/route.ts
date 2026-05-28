@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // so the sensor can be re-claimed (by the same user, or by someone else after
 // physical handover). Readings stay on the server so a future owner of the
 // same hardware can decide whether to keep or wipe the history.
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
   const { userId } = auth();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 

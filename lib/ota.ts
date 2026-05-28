@@ -10,7 +10,11 @@
 import { supabase } from "@/lib/supabase";
 
 export const OTA_INSTALLING_TIMEOUT_MS = 10 * 60 * 1000;
-export const OTA_MIN_BATTERY_PERCENT = 30;
+// Must match the firmware's OTA_MIN_BATTERY_PERCENT in humid/include/config.h.
+// If the server's threshold is lower than the firmware's, the server keeps
+// re-offering updates the firmware will keep deferring — see the bug fix in
+// computeIngestOffer that gates on this.
+export const OTA_MIN_BATTERY_PERCENT = 40;
 
 export type FirmwareRelease = {
   id: string;
@@ -240,6 +244,18 @@ export async function computeIngestOffer(device: DeviceLike, baseUrl: string): P
   if (!best.mandatory) {
     const optedIn = ota?.update_requested_version && !versionsDiffer(best.version, ota.update_requested_version);
     if (!optedIn) return null;
+  }
+
+  // Don't offer an update the firmware will just defer for low battery — that
+  // would put ota_state back to "offered" every cycle, masking the firmware's
+  // deferred report and making the mobile UI stuck on "Installing…". The
+  // firmware re-evaluates on its own next cycle once the battery recovers.
+  if (
+    device.power_source === "battery" &&
+    typeof device.battery_percent === "number" &&
+    device.battery_percent < OTA_MIN_BATTERY_PERCENT
+  ) {
+    return null;
   }
 
   const url = `${baseUrl.replace(/\/$/, "")}/api/firmware/download/${encodeURIComponent(device.device_type)}/${encodeURIComponent(best.version)}`;

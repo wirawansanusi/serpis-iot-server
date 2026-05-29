@@ -148,7 +148,28 @@ export async function POST(req: NextRequest) {
 
   const claimState = typeof state === "string" ? state : "unclaimed";
 
+  // Look up the device row up-front. device_touch returned only claim_state;
+  // we need the rest (id, firmware_version, battery, wipe flag) for OTA and
+  // the credentials-wipe handshake. Lookup is cheap; safe to always do it.
+  const { data: device } = await supabase
+    .from("devices")
+    .select("id, device_type, firmware_version, battery_percent, power_source, wipe_credentials_pending")
+    .eq("public_device_id", public_device_id)
+    .maybeSingle();
+
   let otaOffer = null;
+  let wipeCredentials = false;
+
+  // Single-shot credentials wipe — fires after the owner removes the device.
+  // Clear the flag before sending the response so we don't replay it forever
+  // if the device acks but then crashes mid-NVS-write.
+  if (device?.wipe_credentials_pending) {
+    wipeCredentials = true;
+    await supabase
+      .from("devices")
+      .update({ wipe_credentials_pending: false })
+      .eq("id", device.id);
+  }
 
   // Readings + OTA only once claimed (heartbeat-only until then).
   if (claimState === "claimed") {
@@ -171,13 +192,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Look up the device row (device_touch only returns claim_state) to record
-    // OTA status and decide whether to offer an update.
-    const { data: device } = await supabase
-      .from("devices")
-      .select("id, device_type, firmware_version, battery_percent, power_source")
-      .eq("public_device_id", public_device_id)
-      .maybeSingle();
     if (device) {
       // Persist any reported status BEFORE computing the offer, so a fresh
       // failure blocks re-offering the same version in this same response.
@@ -187,6 +201,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const response = controlResponse(claimState);
-  return NextResponse.json(otaOffer ? { ...response, ota: otaOffer } : response);
+  const response: Record<string, unknown> = { ...controlResponse(claimState) };
+  if (otaOffer) response.ota = otaOffer;
+  if (wipeCredentials) response.wipe_credentials = true;
+  return NextResponse.json(response);
 }

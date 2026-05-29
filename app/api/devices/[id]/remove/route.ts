@@ -15,7 +15,13 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
 
   const { data, error } = await supabase
     .from("devices")
-    .update({ owner_user_id: null, claim_state: "unclaimed" })
+    .update({
+      owner_user_id: null,
+      claim_state: "unclaimed",
+      // Tells the device to clear its stored Wi-Fi credentials on the next
+      // ingest, so it lands in BLE provisioning mode for the next owner.
+      wipe_credentials_pending: true,
+    })
     .eq("id", params.id)
     .eq("owner_user_id", userId)
     .select("id")

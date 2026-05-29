@@ -55,7 +55,12 @@ create table if not exists devices (
   battery_mv        int,
   power_source      text,
   first_seen        timestamptz not null default now(),
-  last_seen         timestamptz not null default now()
+  last_seen         timestamptz not null default now(),
+  -- Set when ownership is removed; on the next ingest the server tells the
+  -- device to wipe its stored Wi-Fi credentials, so a handed-over sensor lands
+  -- in BLE provisioning mode for its next owner instead of reusing the old
+  -- WiFi. Cleared after the response is sent (best-effort, single delivery).
+  wipe_credentials_pending boolean not null default false
 );
 create index if not exists devices_owner_idx on devices(owner_user_id);
 

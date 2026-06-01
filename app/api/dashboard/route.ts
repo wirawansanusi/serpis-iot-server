@@ -315,6 +315,21 @@ export async function GET(req: NextRequest) {
 
   const firmware = await buildMobileFirmware(selectedDevice);
 
+  // Notification preferences for the selected device (defaults when never set).
+  const { data: notifRow } = await supabase
+    .from("device_notification_settings")
+    .select("enabled, use_profile, alert_low, alert_high, cadence, tz_offset_minutes")
+    .eq("device_id", selectedDevice.id)
+    .maybeSingle();
+  const notifications = notifRow ?? {
+    enabled: false,
+    use_profile: true,
+    alert_low: null,
+    alert_high: null,
+    cadence: "balanced",
+    tz_offset_minutes: 0,
+  };
+
   return NextResponse.json({
     range,
     devices,
@@ -334,6 +349,7 @@ export async function GET(req: NextRequest) {
         open_event_count: openEventsByDevice.get(selectedDevice.id) ?? 0,
       },
       firmware,
+      notifications,
       metrics: selectedMetrics,
       stats: selectedMetrics.map(
         (metric) =>

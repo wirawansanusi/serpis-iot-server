@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import type { ChartType } from "@/lib/metrics";
 import { persistOtaStatus, computeIngestOffer, type OtaStatusReport } from "@/lib/ota";
+import { evaluateHumidityAlert, HUMIDITY_KEY } from "@/lib/notifications";
 import { tokenOk } from "@/lib/device-auth";
 
 export const dynamic = "force-dynamic";
@@ -153,7 +154,7 @@ export async function POST(req: NextRequest) {
   // the credentials-wipe handshake. Lookup is cheap; safe to always do it.
   const { data: device } = await supabase
     .from("devices")
-    .select("id, device_type, firmware_version, battery_percent, power_source, wipe_credentials_pending, report_interval_minutes")
+    .select("id, name, owner_user_id, device_type, firmware_version, battery_percent, power_source, wipe_credentials_pending, report_interval_minutes")
     .eq("public_device_id", public_device_id)
     .maybeSingle();
 
@@ -188,6 +189,23 @@ export async function POST(req: NextRequest) {
         if (error) {
           console.error("[ingest] ingest_reading error", error);
           return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+
+        // Push-notification evaluation (independent of the dashboard events
+        // engine). No-ops unless the owner enabled alerts for this device.
+        const humidity = normalized.find((m) => m.key === HUMIDITY_KEY);
+        if (humidity && device) {
+          try {
+            await evaluateHumidityAlert({
+              deviceId: device.id,
+              ownerUserId: device.owner_user_id ?? null,
+              deviceName: device.name ?? null,
+              value: humidity.value,
+              recordedAtMs: Date.parse(recordedAt),
+            });
+          } catch (e) {
+            console.error("[ingest] notification eval failed", e);
+          }
         }
       }
     }

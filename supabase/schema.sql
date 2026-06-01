@@ -147,6 +147,47 @@ create index if not exists events_device_started_idx on events(device_id, starte
 create unique index if not exists events_one_open_per_metric_dir
   on events(device_id, metric_key, direction) where ended_at is null;
 
+-- Push notifications. Alerts are evaluated independently of the events engine
+-- above, against a per-device alert band (default = humidity profile snapshot).
+-- See supabase/migrate_notifications.sql for the full rationale + lib/notifications.ts.
+create table if not exists push_tokens (
+  token         text primary key,
+  user_id       text not null,
+  platform      text,
+  created_at    timestamptz not null default now(),
+  last_seen_at  timestamptz not null default now()
+);
+create index if not exists push_tokens_user_idx on push_tokens(user_id);
+
+create table if not exists device_notification_settings (
+  device_id     uuid primary key references devices(id) on delete cascade,
+  enabled       boolean not null default false,
+  use_profile   boolean not null default true,
+  alert_low     real,
+  alert_high    real,
+  cadence       text not null default 'balanced'
+                  check (cadence in ('balanced','minimal','max_safety')),
+  tz_offset_minutes int not null default 0,
+  updated_at    timestamptz not null default now()
+);
+
+create table if not exists device_alert_state (
+  device_id        uuid not null references devices(id) on delete cascade,
+  metric_key       text not null references metrics(key),
+  state            text not null default 'normal'
+                     check (state in ('normal','pending','active')),
+  direction        text check (direction in ('high','low')),
+  since_at         timestamptz,
+  last_notified_at timestamptz,
+  reminder_count   int not null default 0,
+  deferred         boolean not null default false,
+  notified_day     date,
+  notified_count   int not null default 0,
+  last_value       real,
+  updated_at       timestamptz not null default now(),
+  primary key (device_id, metric_key)
+);
+
 -- OTA firmware releases. One row per (device_type, version) artifact, whose
 -- bytes live in object storage (Tencent COS) under `cos_key`. A release is
 -- immutable once `enabled` (enforced in app code). `min/max_current_version`

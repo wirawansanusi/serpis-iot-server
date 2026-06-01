@@ -60,7 +60,12 @@ create table if not exists devices (
   -- device to wipe its stored Wi-Fi credentials, so a handed-over sensor lands
   -- in BLE provisioning mode for its next owner instead of reusing the old
   -- WiFi. Cleared after the response is sent (best-effort, single delivery).
-  wipe_credentials_pending boolean not null default false
+  wipe_credentials_pending boolean not null default false,
+  -- How often the device powers up Wi-Fi to upload, in minutes. The device
+  -- always *samples* every 5 min; this only batches uploads to save battery.
+  -- Owner-set from the app, echoed to the device in each ingest response.
+  report_interval_minutes int not null default 5
+                      check (report_interval_minutes in (5,10,15,30,60))
 );
 create index if not exists devices_owner_idx on devices(owner_user_id);
 

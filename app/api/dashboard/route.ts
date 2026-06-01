@@ -6,7 +6,6 @@ import { buildMobileFirmware } from "@/lib/ota";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const ONLINE_WINDOW_MS = 15 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const STATUS_METRIC_KEYS = new Set(["battery_mv", "power_mv", "battery_percent"]);
 
@@ -30,6 +29,7 @@ type DeviceRow = {
   battery_percent: number | null;
   battery_mv: number | null;
   power_source: string | null;
+  report_interval_minutes: number | null;
 };
 
 type MetricDef = {
@@ -63,8 +63,17 @@ function parseRange(raw: string | null): Range {
   return "24h";
 }
 
-function online(lastSeen: string): boolean {
-  return Date.now() - new Date(lastSeen).getTime() < ONLINE_WINDOW_MS;
+// A deep-sleeping device is only awake to check in once per report interval, so
+// the "offline" grace period has to scale with it — otherwise a 60-min reporter
+// always looks offline. window = 2 intervals + 5 min slack; at the default
+// 5 min this is 15 min, matching the original fixed window.
+function onlineWindowMs(reportMinutes: number | null): number {
+  const minutes = reportMinutes ?? 5;
+  return (minutes * 2 + 5) * 60 * 1000;
+}
+
+function online(lastSeen: string, reportMinutes: number | null): boolean {
+  return Date.now() - new Date(lastSeen).getTime() < onlineWindowMs(reportMinutes);
 }
 
 function metricFromRow(row: any): DeviceMetric | null {
@@ -102,7 +111,7 @@ export async function GET(req: NextRequest) {
 
   const { data: deviceRows, error: devicesError } = await supabase
     .from("devices")
-    .select("id, mac, name, device_type, last_seen, firmware_version, battery_percent, battery_mv, power_source")
+    .select("id, mac, name, device_type, last_seen, firmware_version, battery_percent, battery_mv, power_source, report_interval_minutes")
     .eq("owner_user_id", userId)
     .order("last_seen", { ascending: false });
 
@@ -200,10 +209,11 @@ export async function GET(req: NextRequest) {
       name: device.name,
       device_type: device.device_type,
       last_seen: device.last_seen,
-      online: online(device.last_seen),
+      online: online(device.last_seen, device.report_interval_minutes),
       battery_percent: device.battery_percent,
       battery_mv: device.battery_mv,
       power_source: device.power_source,
+      report_interval_minutes: device.report_interval_minutes,
       open_event_count: openEventsByDevice.get(device.id) ?? 0,
       primary: primary
         ? {
@@ -316,10 +326,11 @@ export async function GET(req: NextRequest) {
         name: selectedDevice.name,
         device_type: selectedDevice.device_type,
         last_seen: selectedDevice.last_seen,
-        online: online(selectedDevice.last_seen),
+        online: online(selectedDevice.last_seen, selectedDevice.report_interval_minutes),
         battery_percent: selectedDevice.battery_percent,
         battery_mv: selectedDevice.battery_mv,
         power_source: selectedDevice.power_source,
+        report_interval_minutes: selectedDevice.report_interval_minutes,
         open_event_count: openEventsByDevice.get(selectedDevice.id) ?? 0,
       },
       firmware,

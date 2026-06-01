@@ -153,7 +153,7 @@ export async function POST(req: NextRequest) {
   // the credentials-wipe handshake. Lookup is cheap; safe to always do it.
   const { data: device } = await supabase
     .from("devices")
-    .select("id, device_type, firmware_version, battery_percent, power_source, wipe_credentials_pending")
+    .select("id, device_type, firmware_version, battery_percent, power_source, wipe_credentials_pending, report_interval_minutes")
     .eq("public_device_id", public_device_id)
     .maybeSingle();
 
@@ -202,6 +202,9 @@ export async function POST(req: NextRequest) {
   }
 
   const response: Record<string, unknown> = { ...controlResponse(claimState) };
+  // Upload cadence the device should adopt (it samples every 5 min regardless;
+  // this batches uploads). Default 5 keeps legacy/unknown devices unchanged.
+  response.report_interval_minutes = device?.report_interval_minutes ?? 5;
   if (otaOffer) response.ota = otaOffer;
   if (wipeCredentials) response.wipe_credentials = true;
   return NextResponse.json(response);

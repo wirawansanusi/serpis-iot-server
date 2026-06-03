@@ -37,6 +37,10 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !CLAIM_SECRET_ENC_KEY) {
 }
 
 const deviceType = arg("--type", "humid-sht31");
+// NVS namespace must match the firmware's NVS_NAMESPACE (Storage). humid uses
+// "humid"; the IR blaster uses "irblast". Pass --namespace to override.
+//   node --env-file=.env.local scripts/provision-device.mjs --type ir-blaster-esp32c3 --namespace irblast
+const namespace = arg("--namespace", "humid");
 const publicDeviceId = randomUUID();
 const secret = randomBytes(32);
 const secretEnc = encryptSecret(secret, CLAIM_SECRET_ENC_KEY);
@@ -53,11 +57,11 @@ if (error) {
   process.exit(1);
 }
 
-// NVS CSV for esp-idf's nvs_partition_gen.py. Namespace "humid" matches the
-// firmware (Storage). pubid -> getString, secret -> getBytes (32 raw bytes).
+// NVS CSV for esp-idf's nvs_partition_gen.py. The namespace must match the
+// firmware (Storage / NVS_NAMESPACE). pubid -> getString, secret -> getBytes.
 const csv = [
   "key,type,encoding,value",
-  "humid,namespace,,",
+  `${namespace},namespace,,`,
   `pubid,data,string,${publicDeviceId}`,
   `secret,data,hex2bin,${secret.toString("hex")}`,
   "",
@@ -71,6 +75,7 @@ writeFileSync(csvPath, csv, { mode: 0o600 });
 console.log("Registered device:");
 console.log("  public_device_id:", publicDeviceId);
 console.log("  device_type:     ", deviceType);
+console.log("  nvs_namespace:   ", namespace);
 console.log("  claim_state:      unclaimed (secret stored encrypted)");
 console.log("\nNVS CSV written to:", csvPath);
 const binPath = join(outDir, "nvs.bin");

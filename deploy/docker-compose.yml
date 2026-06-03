@@ -17,6 +17,23 @@ services:
     networks:
       - web
 
+  # MQTT broker for the IR blaster fleet. Devices connect over TLS (8883,
+  # published); humid-server connects plaintext over the internal network
+  # (mqtt://serpis-mqtt:1883). See mosquitto/README.md for cert + password setup.
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: serpis-mqtt
+    restart: unless-stopped
+    ports:
+      - "8883:8883"     # TLS listener — devices reach it from the internet
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/passwd:/mosquitto/config/passwd:ro
+      - ./mosquitto/certs:/mosquitto/certs:ro   # fullchain.pem + privkey.pem for mqtt.serpis.id
+      - ./mosquitto/data:/mosquitto/data
+    networks:
+      - web
+
 networks:
   web:
     external: true

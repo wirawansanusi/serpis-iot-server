@@ -28,7 +28,7 @@ listens on `.../evt` + `.../status`).
    docker run --rm -it -v "$PWD/mosquitto:/mosquitto/config" eclipse-mosquitto:2 \
      mosquitto_passwd -c /mosquitto/config/passwd ir-device
    docker run --rm -it -v "$PWD/mosquitto:/mosquitto/config" eclipse-mosquitto:2 \
-     mosquitto_passwd      /mosquitto/config/passwd humid-server
+     mosquitto_passwd /mosquitto/config/passwd serpis-iot-server
    ```
 
    Put the `ir-device` password in the firmware's `include/config.local.h`
@@ -41,11 +41,11 @@ listens on `.../evt` + `.../status`).
 
 ```sh
 # subscribe to a device's command topic (TLS, from anywhere):
-mosquitto_sub -h mqtt.serpis.id -p 8883 -u ir-device -P '<pw>' \
+mosquitto_sub -d --tls-use-os-certs -h mqtt.serpis.id -p 8883 -u ir-device -P 'password' \
   -t 'serpis/ir/+/cmd' -v
 
 # publish a test NEC code to a device (replace <pubid>):
-mosquitto_pub -h mqtt.serpis.id -p 8883 -u ir-device -P '<pw>' \
+mosquitto_pub -d --tls-use-os-certs -h mqtt.serpis.id -p 8883 -u ir-device -P 'password' \
   -t 'serpis/ir/<pubid>/cmd' \
   -m '{"id":"test1","kind":"protocol","protocol":"NEC","code":"0x20DF10EF","bits":32}'
 ```

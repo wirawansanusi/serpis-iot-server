@@ -56,7 +56,7 @@ plus `migrate_battery_status.sql` if migrating an existing project.
 
 - Firmware `include/config.h`: set `POST_URL` to
   `https://humid.<domain>/api/ingest` (replaces the rotating Cloudflare tunnel).
-- `humid-app/.env`: set `EXPO_PUBLIC_API_BASE=https://humid.<domain>` and rebuild.
+- `serpis-iot-hub-app/.env`: set `EXPO_PUBLIC_API_BASE=https://humid.<domain>` and rebuild.
 - Hardening worth doing now that there's a stable cert: flip the firmware's
   `client.setInsecure()` to real TLS validation, and plan per-device ingest
   tokens (the shared `INGEST_TOKEN` is the prototype shortcut).

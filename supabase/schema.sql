@@ -94,6 +94,10 @@ create table if not exists device_metric_thresholds (
   metric_key  text not null references metrics(key),
   min_val     real,
   max_val     real,
+  -- Named preset this band came from (humidity only today): the app's profile id
+  -- ('electronics','comfort','instruments','wine') or 'custom'. NULL = unset; the
+  -- band stays authoritative regardless. Validated in the humidity-profile route.
+  profile_id  text,
   primary key (device_id, metric_key)
 );
 

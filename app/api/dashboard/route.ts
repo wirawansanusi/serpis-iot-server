@@ -47,6 +47,9 @@ type MetricDef = {
 type DeviceMetric = MetricDef & {
   min_val: number | null;
   max_val: number | null;
+  // Named humidity preset the band came from ('electronics'|'custom'|...), or
+  // null. Humidity only today; drives the app's profile selector.
+  profile_id: string | null;
 };
 
 type MetricStats = {
@@ -95,6 +98,7 @@ function metricFromRow(row: any): DeviceMetric | null {
     sort_order: metric.sort_order,
     min_val: row.min_val,
     max_val: row.max_val,
+    profile_id: row.profile_id ?? null,
   };
 }
 
@@ -139,7 +143,7 @@ export async function GET(req: NextRequest) {
   const deviceIds = rawDevices.map((device) => device.id);
   const { data: metricRows, error: metricsError } = await supabase
     .from("device_metric_thresholds")
-    .select("device_id, metric_key, min_val, max_val, metrics(key, label, unit, precision, chart_type, axis, color, sort_order)")
+    .select("device_id, metric_key, min_val, max_val, profile_id, metrics(key, label, unit, precision, chart_type, axis, color, sort_order)")
     .in("device_id", deviceIds);
 
   if (metricsError) {

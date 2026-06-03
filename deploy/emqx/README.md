@@ -2,7 +2,7 @@
 
 EMQX replaces Mosquitto so every IR blaster authenticates with **its own**
 credential and is locked to **its own** topics. Both checks are delegated to
-humid-server over the internal Docker network.
+serpis-iot-server over the internal Docker network.
 
 ## How it works
 

@@ -1,14 +1,14 @@
-# Server-side compose for humid-server. Copy this (and a populated .env) to
+# Server-side compose for serpis-iot-server. Copy this (and a populated .env) to
 # /opt/serpis-iot-server on the VPS. The image is pulled from GHCR by CI/CD.
 #
-# humid-server joins the SAME external Docker network as serpis's Caddy so Caddy
+# serpis-iot-server joins the SAME external Docker network as serpis's Caddy so Caddy
 # can reverse-proxy to it by container name. No published ports — Caddy is the
 # only ingress.
 
 services:
   app:
     image: ghcr.io/wirawansanusi/serpis-iot-server:latest
-    container_name: humid-server
+    container_name: serpis-iot-server
     restart: unless-stopped
     env_file:
       - .env            # runtime secrets — see .env.server.example (never committed)
@@ -17,11 +17,11 @@ services:
     networks:
       - web
 
-  # MQTT broker for the IR blaster fleet (EMQX — PER-DEVICE auth via humid-server
+  # MQTT broker for the IR blaster fleet (EMQX — PER-DEVICE auth via serpis-iot-server
   # HTTP hooks; see emqx/README.md). Devices connect over TLS (8883, published);
-  # humid-server connects plaintext over the internal network as the superuser
+  # serpis-iot-server connects plaintext over the internal network as the superuser
   # (MQTT_URL=mqtt://serpis-mqtt:1883). EMQX reaches the backend by container name
-  # (humid-server:3000), so both share the `web` network. The service keeps the
+  # (serpis-iot-server:3000), so both share the `web` network. The service keeps the
   # name serpis-mqtt so MQTT_URL is unchanged from the Mosquitto setup.
   mosquitto:
     image: emqx/emqx:5.8

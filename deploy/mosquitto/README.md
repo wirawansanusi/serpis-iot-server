@@ -1,7 +1,7 @@
 # MQTT broker (Mosquitto) for the IR fleet
 
 The IR blaster firmware holds a persistent TLS MQTT connection and subscribes to
-`serpis/ir/<public_device_id>/cmd`. `humid-server` publishes commands there (and
+`serpis/ir/<public_device_id>/cmd`. `serpis-iot-server` publishes commands there (and
 listens on `.../evt` + `.../status`).
 
 ## Topics
@@ -32,7 +32,7 @@ listens on `.../evt` + `.../status`).
    ```
 
    Put the `ir-device` password in the firmware's `include/config.local.h`
-   (`MQTT_PASS`) and the `humid-server` password in the server `.env`
+   (`MQTT_PASS`) and the `serpis-iot-server` password in the server `.env`
    (`MQTT_PASSWORD`).
 
 3. **Open the firewall** for `8883/tcp` (devices connect from the internet).

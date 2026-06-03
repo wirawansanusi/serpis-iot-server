@@ -44,7 +44,7 @@ export type AuthResult = { allow: boolean; superuser: boolean };
 export async function authenticateMqtt(username: string, password: string): Promise<AuthResult> {
   if (!username || !password) return { allow: false, superuser: false };
 
-  // Backend service account (the humid-server mqtt.js client). Full access.
+  // Backend service account (the serpis-iot-server mqtt.js client). Full access.
   if (strEq(username, process.env.MQTT_USERNAME) && strEq(password, process.env.MQTT_PASSWORD)) {
     return { allow: true, superuser: true };
   }

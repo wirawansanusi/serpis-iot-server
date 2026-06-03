@@ -22,7 +22,7 @@ trust the fleet to it. You verify five things:
 # On the VPS (Debian/Ubuntu):
 sudo apt-get install -y mosquitto-clients jq
 # 'curl' from inside the Docker network — we use a throwaway container so we hit
-# humid-server by its container name exactly like EMQX does.
+# serpis-iot-server by its container name exactly like EMQX does.
 ```
 
 You'll also need a **provisioned device's** `public_device_id`. Any row in
@@ -58,28 +58,28 @@ HOOK_SECRET='<paste MQTT_AUTH_HOOK_SECRET>'
 docker run --rm --network web curlimages/curl -s \
   -H "content-type: application/json" -H "x-auth-hook-secret: $HOOK_SECRET" \
   -d '{"username":"serpis-backend","password":"<MQTT_PASSWORD>"}' \
-  http://humid-server:3000/api/mqtt/auth | jq
+  http://serpis-iot-server:3000/api/mqtt/auth | jq
 # => {"result":"allow","is_superuser":true}
 
 # 2b. Wrong hook secret -> 403 deny (anyone probing the endpoint)
 docker run --rm --network web curlimages/curl -s -o /dev/null -w '%{http_code}\n' \
   -H "content-type: application/json" -H "x-auth-hook-secret: nope" \
   -d '{"username":"x","password":"y"}' \
-  http://humid-server:3000/api/mqtt/auth
+  http://serpis-iot-server:3000/api/mqtt/auth
 # => 403
 
 # 2c. ACL: a device on its OWN cmd topic -> allow
 docker run --rm --network web curlimages/curl -s \
   -H "content-type: application/json" -H "x-auth-hook-secret: $HOOK_SECRET" \
   -d '{"username":"<pubid>","topic":"serpis/ir/<pubid>/cmd","action":"subscribe"}' \
-  http://humid-server:3000/api/mqtt/acl | jq
+  http://serpis-iot-server:3000/api/mqtt/acl | jq
 # => {"result":"allow"}
 
 # 2d. ACL: a device on SOMEONE ELSE's topic -> deny
 docker run --rm --network web curlimages/curl -s \
   -H "content-type: application/json" -H "x-auth-hook-secret: $HOOK_SECRET" \
   -d '{"username":"<pubid>","topic":"serpis/ir/OTHER/cmd","action":"subscribe"}' \
-  http://humid-server:3000/api/mqtt/acl | jq
+  http://serpis-iot-server:3000/api/mqtt/acl | jq
 # => {"result":"deny"}
 ```
 
@@ -93,7 +93,7 @@ Run it on a machine with the repo + node + the `.env` (your dev box or the VPS
 checkout — **not** the slim production container, which doesn't ship `scripts/`):
 
 ```sh
-# from the humid-server repo root, with .env holding SUPABASE_URL,
+# from the serpis-iot-server repo root, with .env holding SUPABASE_URL,
 # SUPABASE_SERVICE_ROLE_KEY, CLAIM_SECRET_ENC_KEY:
 node --env-file=.env scripts/print-mqtt-creds.mjs <pubid>
 # username : <pubid>
@@ -226,7 +226,7 @@ device to "offline" without waiting out the freshness window. Re-check the SQL �
 | Every device refused (`not authorized`) | `MQTT_AUTH_HOOK_SECRET` differs between `.env` and `emqx.conf`, or `app` can't be reached — check `docker compose logs app \| grep mqtt-auth`. |
 | One device refused, others fine | Its `claim_secret` was set with a different `CLAIM_SECRET_ENC_KEY` than the server now runs; re-provision, or check `print-mqtt-creds.mjs` against the firmware serial log. |
 | Hooks return 403 to EMQX | The `x-auth-hook-secret` header in `emqx.conf` doesn't match `MQTT_AUTH_HOOK_SECRET`. |
-| EMQX log: connection refused to `humid-server:3000` | EMQX and `app` aren't on the same `web` network, or the app container isn't named `humid-server`. |
+| EMQX log: connection refused to `serpis-iot-server:3000` | EMQX and `app` aren't on the same `web` network, or the app container isn't named `serpis-iot-server`. |
 | TLS handshake fails from clients | `emqx/certs/fullchain.pem`+`privkey.pem` missing/expired or not for `mqtt.serpis.id`. |
 | Superuser can't use `+` wildcards | `MQTT_USERNAME`/`MQTT_PASSWORD` in `.env` don't match what the app sends; authn must return `is_superuser:true` (see `docker compose logs app`). |
 | `link_online` never flips to false | You disconnected cleanly (Ctrl-C). A clean DISCONNECT suppresses the will — use `kill -9` or pull power, as a real outage would. |

@@ -31,7 +31,7 @@ function getClient(): MqttClient | null {
     username: process.env.MQTT_USERNAME,
     password: process.env.MQTT_PASSWORD,
     reconnectPeriod: 3000,
-    clientId: `humid-server-${Math.random().toString(16).slice(2, 8)}`,
+    clientId: `serpis-iot-server-${Math.random().toString(16).slice(2, 8)}`,
   });
 
   client.on("connect", () => {

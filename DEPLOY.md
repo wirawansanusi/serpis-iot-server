@@ -1,4 +1,4 @@
-# Deploying humid-server
+# Deploying serpis-iot-server
 
 Production setup: **GitHub Actions → GHCR → Docker on the existing VPS,
 reverse-proxied by the shared Caddy** (same box as serpis). Mirrors the

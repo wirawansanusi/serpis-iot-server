@@ -5,9 +5,9 @@
 # Prerequisite: point a DNS A/AAAA record for this hostname at the VPS first —
 # Caddy then provisions a Let's Encrypt certificate automatically.
 #
-# `humid-server` resolves to the app container because both share the external
+# `serpis-iot-server` resolves to the app container because both share the external
 # Docker network (see deploy/docker-compose.yml).
 
 humid.YOUR_DOMAIN.com {
-    reverse_proxy humid-server:3000
+    reverse_proxy serpis-iot-server:3000
 }

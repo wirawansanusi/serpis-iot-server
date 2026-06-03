@@ -9,9 +9,12 @@ function isFiniteNumber(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
 }
 
-// Set a device's notification preferences. Owner-scoped. The alert band lives
-// here (independent of the humidity profile, per the chosen design); the app
-// sends a profile snapshot when use_profile is true.
+// Save a device's shared alert *definition* — the band (independent of the
+// humidity profile; the app sends a profile snapshot when use_profile is true)
+// and the cadence. This is account-wide: it answers "when is this sensor out of
+// range and how aggressively do we alert?" Per-phone delivery (who gets pinged)
+// lives in /push-subscription. `enabled` is no longer a user toggle; we set it
+// true here to mark the band as configured (the engine gates on subscriptions).
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const { userId } = auth();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -24,9 +27,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
   const b = (body ?? {}) as Record<string, unknown>;
 
-  if (typeof b.enabled !== "boolean") {
-    return NextResponse.json({ error: "enabled must be a boolean" }, { status: 400 });
-  }
   const cadence = b.cadence;
   if (typeof cadence !== "string" || !CADENCES.includes(cadence as Cadence)) {
     return NextResponse.json({ error: `cadence must be one of ${CADENCES.join(", ")}` }, { status: 400 });
@@ -34,8 +34,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const useProfile = b.use_profile !== false; // default true
   const alertLow = isFiniteNumber(b.alert_low) ? Math.max(0, Math.min(100, b.alert_low)) : null;
   const alertHigh = isFiniteNumber(b.alert_high) ? Math.max(0, Math.min(100, b.alert_high)) : null;
-  if (b.enabled && alertLow === null && alertHigh === null) {
-    return NextResponse.json({ error: "need at least one of alert_low / alert_high when enabled" }, { status: 400 });
+  if (alertLow === null && alertHigh === null) {
+    return NextResponse.json({ error: "need at least one of alert_low / alert_high" }, { status: 400 });
   }
   if (alertLow !== null && alertHigh !== null && alertLow >= alertHigh) {
     return NextResponse.json({ error: "alert_low must be below alert_high" }, { status: 400 });
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     .upsert(
       {
         device_id: params.id,
-        enabled: b.enabled,
+        enabled: true, // band configured; per-phone delivery gates the engine
         use_profile: useProfile,
         alert_low: alertLow,
         alert_high: alertHigh,

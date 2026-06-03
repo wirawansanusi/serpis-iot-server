@@ -149,11 +149,18 @@ export async function evaluateHumidityAlert(opts: {
     .eq("device_id", deviceId)
     .maybeSingle();
   const settings = settingsRow as Settings | null;
-  if (!settings || !settings.enabled) return;
+  if (!settings) return;
 
   const low = settings.alert_low;
   const high = settings.alert_high;
   if (low === null && high === null) return;
+
+  // Delivery is per-phone: bail early if no phone is subscribed to this sensor
+  // (also skips the state-machine bookkeeping when nobody's listening). When a
+  // phone subscribes mid-excursion it picks up alerting from the next reading.
+  if (!ownerUserId) return;
+  const tokens = await subscribedTokens(deviceId, ownerUserId);
+  if (tokens.length === 0) return;
 
   const p = CADENCE[settings.cadence] ?? CADENCE.balanced;
   const now = recordedAtMs;
@@ -287,8 +294,7 @@ export async function evaluateHumidityAlert(opts: {
     { onConflict: "device_id,metric_key" },
   );
 
-  if (message && ownerUserId) {
-    const tokens = await ownerTokens(ownerUserId);
+  if (message) {
     await sendExpoPush(tokens, message);
   }
 }
@@ -326,8 +332,16 @@ function buildReminder(
   };
 }
 
-async function ownerTokens(userId: string): Promise<string[]> {
-  const { data } = await supabase.from("push_tokens").select("token").eq("user_id", userId);
+// The push tokens subscribed to this device, filtered to the device owner's
+// tokens. The owner filter matters because a phone can be handed to another user
+// (re-login re-owns the token); without it, a re-owned phone would keep getting
+// the previous owner's sensor alerts. Inner-join on push_tokens enforces it.
+async function subscribedTokens(deviceId: string, ownerUserId: string): Promise<string[]> {
+  const { data } = await supabase
+    .from("device_push_subscriptions")
+    .select("token, push_tokens!inner(user_id)")
+    .eq("device_id", deviceId)
+    .eq("push_tokens.user_id", ownerUserId);
   return ((data ?? []) as { token: string }[]).map((r) => r.token);
 }
 

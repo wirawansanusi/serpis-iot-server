@@ -171,6 +171,21 @@ create table if not exists device_notification_settings (
   updated_at    timestamptz not null default now()
 );
 
+-- Per-phone delivery. A row = "this install (push token) wants alerts for this
+-- sensor." The band/cadence above (device_notification_settings) is the shared
+-- *definition* of when a sensor is out of range; this table is the per-phone
+-- *delivery list* the engine fans out to. Absence of a row = off for that phone.
+-- Cascades clean themselves up: removing a sensor or unregistering a token
+-- (sign-out) drops the matching subscriptions. The engine additionally filters
+-- by the device owner's user_id so a re-owned phone never gets stale alerts.
+create table if not exists device_push_subscriptions (
+  device_id   uuid not null references devices(id) on delete cascade,
+  token       text not null references push_tokens(token) on delete cascade,
+  created_at  timestamptz not null default now(),
+  primary key (device_id, token)
+);
+create index if not exists device_push_subscriptions_token_idx on device_push_subscriptions(token);
+
 create table if not exists device_alert_state (
   device_id        uuid not null references devices(id) on delete cascade,
   metric_key       text not null references metrics(key),

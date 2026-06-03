@@ -320,19 +320,33 @@ export async function GET(req: NextRequest) {
 
   const firmware = await buildMobileFirmware(selectedDevice);
 
-  // Notification preferences for the selected device (defaults when never set).
+  // Notification settings for the selected device. The band/cadence/tz are the
+  // shared account-wide definition; `enabled` is per-phone — whether THIS phone
+  // (identified by its Expo push token, sent in the X-Expo-Push-Token header) is
+  // subscribed to this sensor. No header (e.g. permission denied) => not enabled.
   const { data: notifRow } = await supabase
     .from("device_notification_settings")
-    .select("enabled, use_profile, alert_low, alert_high, cadence, tz_offset_minutes")
+    .select("use_profile, alert_low, alert_high, cadence, tz_offset_minutes")
     .eq("device_id", selectedDevice.id)
     .maybeSingle();
-  const notifications = notifRow ?? {
-    enabled: false,
-    use_profile: true,
-    alert_low: null,
-    alert_high: null,
-    cadence: "balanced",
-    tz_offset_minutes: 0,
+  const pushToken = req.headers.get("x-expo-push-token");
+  let subscribed = false;
+  if (pushToken) {
+    const { data: sub } = await supabase
+      .from("device_push_subscriptions")
+      .select("token")
+      .eq("device_id", selectedDevice.id)
+      .eq("token", pushToken)
+      .maybeSingle();
+    subscribed = !!sub;
+  }
+  const notifications = {
+    enabled: subscribed,
+    use_profile: notifRow?.use_profile ?? true,
+    alert_low: notifRow?.alert_low ?? null,
+    alert_high: notifRow?.alert_high ?? null,
+    cadence: notifRow?.cadence ?? "balanced",
+    tz_offset_minutes: notifRow?.tz_offset_minutes ?? 0,
   };
 
   return NextResponse.json({

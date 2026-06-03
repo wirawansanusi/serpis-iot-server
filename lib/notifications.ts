@@ -69,7 +69,6 @@ const CADENCE: Record<Cadence, CadenceParams> = {
 
 type Settings = {
   device_id: string;
-  enabled: boolean;
   use_profile: boolean;
   alert_low: number | null;
   alert_high: number | null;
@@ -133,7 +132,8 @@ function humanSince(sinceMs: number, nowMs: number): string {
 }
 
 // Evaluate one humidity reading and push if the cadence policy says so. Safe to
-// call on every claimed ingest; it no-ops unless notifications are enabled.
+// call on every claimed ingest; it no-ops unless a band is configured and at
+// least one phone is subscribed to this sensor.
 export async function evaluateHumidityAlert(opts: {
   deviceId: string;
   ownerUserId: string | null;
@@ -145,7 +145,7 @@ export async function evaluateHumidityAlert(opts: {
 
   const { data: settingsRow } = await supabase
     .from("device_notification_settings")
-    .select("device_id, enabled, use_profile, alert_low, alert_high, cadence, tz_offset_minutes")
+    .select("device_id, use_profile, alert_low, alert_high, cadence, tz_offset_minutes")
     .eq("device_id", deviceId)
     .maybeSingle();
   const settings = settingsRow as Settings | null;

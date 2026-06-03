@@ -161,7 +161,6 @@ create index if not exists push_tokens_user_idx on push_tokens(user_id);
 
 create table if not exists device_notification_settings (
   device_id     uuid primary key references devices(id) on delete cascade,
-  enabled       boolean not null default false,
   use_profile   boolean not null default true,
   alert_low     real,
   alert_high    real,

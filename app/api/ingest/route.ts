@@ -193,7 +193,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Push-notification evaluation (independent of the dashboard events
-        // engine). No-ops unless the owner enabled alerts for this device.
+        // engine). No-ops unless a band is configured and a phone is subscribed.
         const humidity = normalized.find((m) => m.key === HUMIDITY_KEY);
         if (humidity && device) {
           try {

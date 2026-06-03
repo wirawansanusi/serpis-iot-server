@@ -24,8 +24,9 @@ create table if not exists device_push_subscriptions (
 -- Reverse lookup: "which sensors does this phone subscribe to" + token cascades.
 create index if not exists device_push_subscriptions_token_idx on device_push_subscriptions(token);
 
--- device_notification_settings.enabled is now vestigial (the engine gates on
--- whether any subscription exists, filtered to the owner's tokens). Left in place
--- for backward compatibility; the band route just sets it true when a band is
--- saved. No data migration needed — existing settings keep working, and existing
--- phones simply have no subscription rows until they re-toggle in the new app.
+-- Drop the now-dead device_notification_settings.enabled column. On/off is per
+-- phone (a device_push_subscriptions row), which a single sensor-level boolean
+-- can't represent — so the old column just sat stuck at true and contradicted the
+-- app's Alerts toggle. The engine gates on subscriptions; the dashboard derives
+-- `enabled` per-phone; nothing reads this column anymore. Safe to drop.
+alter table device_notification_settings drop column if exists enabled;

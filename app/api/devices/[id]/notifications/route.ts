@@ -13,8 +13,7 @@ function isFiniteNumber(v: unknown): v is number {
 // humidity profile; the app sends a profile snapshot when use_profile is true)
 // and the cadence. This is account-wide: it answers "when is this sensor out of
 // range and how aggressively do we alert?" Per-phone delivery (who gets pinged)
-// lives in /push-subscription. `enabled` is no longer a user toggle; we set it
-// true here to mark the band as configured (the engine gates on subscriptions).
+// lives in /push-subscription — that's the on/off the app's Alerts toggle drives.
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const { userId } = auth();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -58,7 +57,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     .upsert(
       {
         device_id: params.id,
-        enabled: true, // band configured; per-phone delivery gates the engine
         use_profile: useProfile,
         alert_low: alertLow,
         alert_high: alertHigh,
@@ -68,7 +66,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       },
       { onConflict: "device_id" },
     )
-    .select("enabled, use_profile, alert_low, alert_high, cadence, tz_offset_minutes")
+    .select("use_profile, alert_low, alert_high, cadence, tz_offset_minutes")
     .maybeSingle();
   if (error) {
     console.error("[notifications settings]", error);

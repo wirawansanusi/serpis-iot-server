@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import type { ChartType } from "@/lib/metrics";
 import { persistOtaStatus, computeIngestOffer, type OtaStatusReport } from "@/lib/ota";
 import { evaluateHumidityAlert, HUMIDITY_KEY } from "@/lib/notifications";
+import { evaluateAutomations } from "@/lib/automations";
 import { tokenOk } from "@/lib/device-auth";
 
 export const dynamic = "force-dynamic";
@@ -205,6 +206,21 @@ export async function POST(req: NextRequest) {
             });
           } catch (e) {
             console.error("[ingest] notification eval failed", e);
+          }
+        }
+
+        // If-then automations: any metric on this device may trigger an IR
+        // action on the owner's ir-blaster. No-ops unless rules exist.
+        if (device) {
+          try {
+            await evaluateAutomations({
+              triggerDeviceId: device.id,
+              ownerUserId: device.owner_user_id ?? null,
+              metrics: normalized.map((m) => ({ key: m.key, value: m.value })),
+              recordedAtMs: Date.parse(recordedAt),
+            });
+          } catch (e) {
+            console.error("[ingest] automation eval failed", e);
           }
         }
       }

@@ -57,10 +57,20 @@ async function onMessage(topic: string, payload: Buffer): Promise<void> {
   const leaf = parts[3];
 
   if (leaf === "status") {
-    // Retained LWT: "online" | "offline". Touch last_seen so the dashboard's
-    // freshness-based online flag flips up immediately on (re)connect.
-    if (payload.toString() === "online") {
-      await supabase.from("devices").update({ last_seen: new Date().toISOString() })
+    // Retained LWT: "online" | "offline". link_online records the live MQTT link
+    // so the app shows offline the instant the connection drops (the Last-Will),
+    // not after the freshness window. On "online" also touch last_seen so the
+    // freshness flag flips up immediately on (re)connect.
+    const status = payload.toString();
+    if (status === "online") {
+      await supabase
+        .from("devices")
+        .update({ link_online: true, last_seen: new Date().toISOString() })
+        .eq("public_device_id", publicDeviceId);
+    } else if (status === "offline") {
+      await supabase
+        .from("devices")
+        .update({ link_online: false })
         .eq("public_device_id", publicDeviceId);
     }
     return;
@@ -83,7 +93,21 @@ async function onMessage(topic: string, payload: Buffer): Promise<void> {
         ack_error: typeof evt.error === "string" ? evt.error.slice(0, 200) : null,
       }).eq("id", evt.id);
     }
-    // Learned codes ({kind:"learned", ...}) are handled in the DIY-learn phase.
+
+    // DIY learn result: {id, kind:"learned", ok, command?, error?}. Stash the
+    // captured command object on the originating learn row so the app can poll
+    // it (GET .../learn?id=) and save it as a labelled remote button.
+    if (evt.kind === "learned" && typeof evt.id === "string") {
+      const learned =
+        evt.ok && evt.command && typeof evt.command === "object" ? evt.command : null;
+      await supabase.from("device_commands").update({
+        status: evt.ok ? "acked" : "failed",
+        acked_at: new Date().toISOString(),
+        ack_ok: !!evt.ok,
+        ack_error: typeof evt.error === "string" ? evt.error.slice(0, 200) : null,
+        result: learned,
+      }).eq("id", evt.id);
+    }
   }
 }
 

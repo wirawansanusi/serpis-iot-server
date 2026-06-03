@@ -17,20 +17,22 @@ services:
     networks:
       - web
 
-  # MQTT broker for the IR blaster fleet. Devices connect over TLS (8883,
-  # published); humid-server connects plaintext over the internal network
-  # (mqtt://serpis-mqtt:1883). See mosquitto/README.md for cert + password setup.
+  # MQTT broker for the IR blaster fleet (EMQX — PER-DEVICE auth via humid-server
+  # HTTP hooks; see emqx/README.md). Devices connect over TLS (8883, published);
+  # humid-server connects plaintext over the internal network as the superuser
+  # (MQTT_URL=mqtt://serpis-mqtt:1883). EMQX reaches the backend by container name
+  # (humid-server:3000), so both share the `web` network. The service keeps the
+  # name serpis-mqtt so MQTT_URL is unchanged from the Mosquitto setup.
   mosquitto:
-    image: eclipse-mosquitto:2
+    image: emqx/emqx:5.8
     container_name: serpis-mqtt
     restart: unless-stopped
     ports:
       - "8883:8883"     # TLS listener — devices reach it from the internet
     volumes:
-      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - ./mosquitto/passwd:/mosquitto/config/passwd:ro
-      - ./mosquitto/certs:/mosquitto/certs:ro   # fullchain.pem + privkey.pem for mqtt.serpis.id
-      - ./mosquitto/data:/mosquitto/data
+      - ./emqx/emqx.conf:/opt/emqx/etc/emqx.conf:ro
+      - ./emqx/certs:/opt/emqx/etc/certs:ro   # fullchain.pem + privkey.pem for mqtt.serpis.id
+      - ./emqx/data:/opt/emqx/data
     networks:
       - web
 

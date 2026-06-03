@@ -30,6 +30,7 @@ type DeviceRow = {
   battery_mv: number | null;
   power_source: string | null;
   report_interval_minutes: number | null;
+  link_online: boolean | null;
 };
 
 type MetricDef = {
@@ -72,7 +73,11 @@ function onlineWindowMs(reportMinutes: number | null): number {
   return (minutes * 2 + 5) * 60 * 1000;
 }
 
-function online(lastSeen: string, reportMinutes: number | null): boolean {
+// link_online is the MQTT Last-Will signal (always-on devices): false => the
+// broker saw the connection drop, so it's offline NOW regardless of freshness.
+// null (HTTP-only sensors) falls back to pure freshness.
+function online(lastSeen: string, reportMinutes: number | null, linkOnline?: boolean | null): boolean {
+  if (linkOnline === false) return false;
   return Date.now() - new Date(lastSeen).getTime() < onlineWindowMs(reportMinutes);
 }
 
@@ -111,7 +116,7 @@ export async function GET(req: NextRequest) {
 
   const { data: deviceRows, error: devicesError } = await supabase
     .from("devices")
-    .select("id, mac, name, device_type, last_seen, firmware_version, battery_percent, battery_mv, power_source, report_interval_minutes")
+    .select("id, mac, name, device_type, last_seen, firmware_version, battery_percent, battery_mv, power_source, report_interval_minutes, link_online")
     .eq("owner_user_id", userId)
     .order("last_seen", { ascending: false });
 
@@ -209,7 +214,7 @@ export async function GET(req: NextRequest) {
       name: device.name,
       device_type: device.device_type,
       last_seen: device.last_seen,
-      online: online(device.last_seen, device.report_interval_minutes),
+      online: online(device.last_seen, device.report_interval_minutes, device.link_online),
       battery_percent: device.battery_percent,
       battery_mv: device.battery_mv,
       power_source: device.power_source,
@@ -341,7 +346,7 @@ export async function GET(req: NextRequest) {
         name: selectedDevice.name,
         device_type: selectedDevice.device_type,
         last_seen: selectedDevice.last_seen,
-        online: online(selectedDevice.last_seen, selectedDevice.report_interval_minutes),
+        online: online(selectedDevice.last_seen, selectedDevice.report_interval_minutes, selectedDevice.link_online),
         battery_percent: selectedDevice.battery_percent,
         battery_mv: selectedDevice.battery_mv,
         power_source: selectedDevice.power_source,

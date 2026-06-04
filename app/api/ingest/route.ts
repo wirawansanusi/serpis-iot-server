@@ -108,7 +108,8 @@ export async function POST(req: NextRequest) {
   const sampleAgeMs = isFiniteNumber(sample_age_ms)
     ? Math.max(0, Math.min(MAX_SAMPLE_AGE_MS, Math.round(sample_age_ms)))
     : 0;
-  const recordedAt = new Date(Date.now() - sampleAgeMs).toISOString();
+  const recordedAtMs = Date.now() - sampleAgeMs;
+  const recordedAt = new Date(recordedAtMs).toISOString();
 
   // Battery status (device status, not charted): top-level fields from firmware.
   const batteryMv = isFiniteNumber(battery_mv) ? Math.round(battery_mv) : null;
@@ -192,36 +193,29 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: error.message }, { status: 500 });
         }
 
-        // Push-notification evaluation (independent of the dashboard events
-        // engine). No-ops unless a band is configured and a phone is subscribed.
-        const humidity = normalized.find((m) => m.key === HUMIDITY_KEY);
-        if (humidity && device) {
-          try {
-            await evaluateHumidityAlert({
-              deviceId: device.id,
-              ownerUserId: device.owner_user_id ?? null,
-              deviceName: device.name ?? null,
-              value: humidity.value,
-              recordedAtMs: Date.parse(recordedAt),
-            });
-          } catch (e) {
-            console.error("[ingest] notification eval failed", e);
-          }
-        }
-
-        // If-then automations: any metric on this device may trigger an IR
-        // action on the owner's ir-blaster. No-ops unless rules exist.
+        // Push-notification + automation evaluation run independently of each
+        // other (and of the dashboard events engine), so fire them concurrently.
+        // Each no-ops unless configured, and swallows its own errors so neither
+        // can break ingest.
         if (device) {
-          try {
-            await evaluateAutomations({
+          const humidity = normalized.find((m) => m.key === HUMIDITY_KEY);
+          await Promise.all([
+            humidity
+              ? evaluateHumidityAlert({
+                  deviceId: device.id,
+                  ownerUserId: device.owner_user_id ?? null,
+                  deviceName: device.name ?? null,
+                  value: humidity.value,
+                  recordedAtMs,
+                }).catch((e) => console.error("[ingest] notification eval failed", e))
+              : Promise.resolve(),
+            evaluateAutomations({
               triggerDeviceId: device.id,
               ownerUserId: device.owner_user_id ?? null,
               metrics: normalized.map((m) => ({ key: m.key, value: m.value })),
-              recordedAtMs: Date.parse(recordedAt),
-            });
-          } catch (e) {
-            console.error("[ingest] automation eval failed", e);
-          }
+              recordedAtMs,
+            }).catch((e) => console.error("[ingest] automation eval failed", e)),
+          ]);
         }
       }
     }

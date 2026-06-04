@@ -169,17 +169,26 @@ export async function GET(req: NextRequest) {
   }
 
   const primaryKeys = Array.from(new Set([...primaryByDevice.values()].map((metric) => metric.key)));
-  const primaryRows =
+  // Primary-metric readings (strip sparkline/compliance) and the open-event
+  // counts are independent — fetch them together rather than serially.
+  const [primaryRes, openEventsRes] = await Promise.all([
     primaryKeys.length === 0
-      ? []
-      : ((await supabase
+      ? Promise.resolve({ data: [] as { device_id: string; metric_key: string; value: number; recorded_at: string }[] })
+      : supabase
           .from("readings")
           .select("device_id, metric_key, value, recorded_at")
           .in("device_id", deviceIds)
           .in("metric_key", primaryKeys)
           .gte("recorded_at", dayIso)
-          .order("recorded_at", { ascending: true })).data ?? []);
+          .order("recorded_at", { ascending: true }),
+    supabase
+      .from("events")
+      .select("device_id")
+      .in("device_id", deviceIds)
+      .is("ended_at", null),
+  ]);
 
+  const primaryRows = primaryRes.data ?? [];
   const primaryReadings = new Map<string, { value: number; recorded_at: string }[]>();
   for (const row of primaryRows as { device_id: string; metric_key: string; value: number; recorded_at: string }[]) {
     const primary = primaryByDevice.get(row.device_id);
@@ -189,11 +198,7 @@ export async function GET(req: NextRequest) {
     else primaryReadings.set(row.device_id, [{ value: row.value, recorded_at: row.recorded_at }]);
   }
 
-  const { data: openEventRows } = await supabase
-    .from("events")
-    .select("device_id")
-    .in("device_id", deviceIds)
-    .is("ended_at", null);
+  const openEventRows = openEventsRes.data;
   const openEventsByDevice = new Map<string, number>();
   for (const row of (openEventRows ?? []) as { device_id: string }[]) {
     openEventsByDevice.set(row.device_id, (openEventsByDevice.get(row.device_id) ?? 0) + 1);
@@ -247,28 +252,42 @@ export async function GET(req: NextRequest) {
   const useHourly = range === "7d" || range === "30d";
   let chartData: ChartRow[] = [];
 
-  if (chartKeys.length > 0) {
-    const chartRes = useHourly
-      ? await supabase
-          .from("readings_hourly")
-          .select("hour, metric_key, val_avg")
-          .eq("device_id", selectedDevice.id)
-          .in("metric_key", chartKeys)
-          .gte("hour", sinceIso)
-          .order("hour", { ascending: true })
-      : await supabase
+  // Chart series + the 24h stats roll-up for the selected device are independent
+  // — fetch them together, then process below.
+  const [chartRes, statsRes] = await Promise.all([
+    chartKeys.length === 0
+      ? Promise.resolve({ data: [] as any[], error: null })
+      : useHourly
+        ? supabase
+            .from("readings_hourly")
+            .select("hour, metric_key, val_avg")
+            .eq("device_id", selectedDevice.id)
+            .in("metric_key", chartKeys)
+            .gte("hour", sinceIso)
+            .order("hour", { ascending: true })
+        : supabase
+            .from("readings")
+            .select("recorded_at, metric_key, value")
+            .eq("device_id", selectedDevice.id)
+            .in("metric_key", chartKeys)
+            .gte("recorded_at", sinceIso)
+            .order("recorded_at", { ascending: true }),
+    selectedMetricKeys.length === 0
+      ? Promise.resolve({ data: [] as { metric_key: string; value: number; recorded_at: string }[] })
+      : supabase
           .from("readings")
-          .select("recorded_at, metric_key, value")
+          .select("metric_key, value, recorded_at")
           .eq("device_id", selectedDevice.id)
-          .in("metric_key", chartKeys)
-          .gte("recorded_at", sinceIso)
-          .order("recorded_at", { ascending: true });
+          .in("metric_key", selectedMetricKeys)
+          .gte("recorded_at", dayIso),
+  ]);
 
-    if (chartRes.error) {
-      console.error("[api/dashboard] chart", chartRes.error);
-      return NextResponse.json({ error: "server_error" }, { status: 500 });
-    }
+  if (chartRes.error) {
+    console.error("[api/dashboard] chart", chartRes.error);
+    return NextResponse.json({ error: "server_error" }, { status: 500 });
+  }
 
+  if (chartKeys.length > 0) {
     const rowMap = new Map<number, ChartRow>();
     for (const row of (chartRes.data ?? []) as any[]) {
       const t = new Date(useHourly ? row.hour : row.recorded_at).getTime();
@@ -282,15 +301,7 @@ export async function GET(req: NextRequest) {
     chartData = sample(Array.from(rowMap.values()).sort((a, b) => a.t - b.t), 180);
   }
 
-  const statsRows =
-    selectedMetricKeys.length === 0
-      ? []
-      : ((await supabase
-          .from("readings")
-          .select("metric_key, value, recorded_at")
-          .eq("device_id", selectedDevice.id)
-          .in("metric_key", selectedMetricKeys)
-          .gte("recorded_at", dayIso)).data ?? []);
+  const statsRows = statsRes.data ?? [];
 
   const statsMap = new Map<string, MetricStats>();
   for (const row of statsRows as { metric_key: string; value: number; recorded_at: string }[]) {
@@ -310,40 +321,41 @@ export async function GET(req: NextRequest) {
     statsMap.set(row.metric_key, current);
   }
 
-  const { data: eventRows, error: eventsError } = await supabase
-    .from("events")
-    .select("id, metric_key, direction, started_at, ended_at, peak_value, threshold, metrics(label, unit, precision)")
-    .eq("device_id", selectedDevice.id)
-    .order("started_at", { ascending: false })
-    .limit(50);
+  const pushToken = req.headers.get("x-expo-push-token");
+  // Selected-device detail: recent events, firmware summary, notification
+  // settings, and whether THIS phone is subscribed. All independent — one batch.
+  // The band/cadence/tz are the shared account-wide definition; `enabled` is
+  // per-phone (identified by the X-Expo-Push-Token header; no header => off).
+  const [eventsRes, firmware, notifRes, subRes] = await Promise.all([
+    supabase
+      .from("events")
+      .select("id, metric_key, direction, started_at, ended_at, peak_value, threshold, metrics(label, unit, precision)")
+      .eq("device_id", selectedDevice.id)
+      .order("started_at", { ascending: false })
+      .limit(50),
+    buildMobileFirmware(selectedDevice),
+    supabase
+      .from("device_notification_settings")
+      .select("use_profile, alert_low, alert_high, cadence, tz_offset_minutes")
+      .eq("device_id", selectedDevice.id)
+      .maybeSingle(),
+    pushToken
+      ? supabase
+          .from("device_push_subscriptions")
+          .select("token")
+          .eq("device_id", selectedDevice.id)
+          .eq("token", pushToken)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
 
-  if (eventsError) {
-    console.error("[api/dashboard] events", eventsError);
+  if (eventsRes.error) {
+    console.error("[api/dashboard] events", eventsRes.error);
     return NextResponse.json({ error: "server_error" }, { status: 500 });
   }
-
-  const firmware = await buildMobileFirmware(selectedDevice);
-
-  // Notification settings for the selected device. The band/cadence/tz are the
-  // shared account-wide definition; `enabled` is per-phone — whether THIS phone
-  // (identified by its Expo push token, sent in the X-Expo-Push-Token header) is
-  // subscribed to this sensor. No header (e.g. permission denied) => not enabled.
-  const { data: notifRow } = await supabase
-    .from("device_notification_settings")
-    .select("use_profile, alert_low, alert_high, cadence, tz_offset_minutes")
-    .eq("device_id", selectedDevice.id)
-    .maybeSingle();
-  const pushToken = req.headers.get("x-expo-push-token");
-  let subscribed = false;
-  if (pushToken) {
-    const { data: sub } = await supabase
-      .from("device_push_subscriptions")
-      .select("token")
-      .eq("device_id", selectedDevice.id)
-      .eq("token", pushToken)
-      .maybeSingle();
-    subscribed = !!sub;
-  }
+  const eventRows = eventsRes.data;
+  const notifRow = notifRes.data;
+  const subscribed = !!subRes.data;
   const notifications = {
     enabled: subscribed,
     use_profile: notifRow?.use_profile ?? true,

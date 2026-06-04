@@ -177,8 +177,9 @@ function validateActiveHours(raw: unknown): { ok: true; value: ActiveHours } | V
   return { ok: true, value: { start: Math.round(start), end: Math.round(end), tz_offset_minutes: Math.round(tz) } };
 }
 
-// Validate a create/patch body. `partial` allows a subset (PATCH); create
-// requires the full set. Returns the normalized input or an error string.
+// Validate a full create/edit body (all fields required). The PATCH route does
+// its own light partial handling for enabled/name. Returns the normalized input
+// or an error string.
 export function validateAutomationInput(raw: unknown): ValOk | ValErr {
   if (!isObj(raw)) return { ok: false, error: "body must be an object" };
 

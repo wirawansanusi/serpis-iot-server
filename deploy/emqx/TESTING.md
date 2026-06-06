@@ -40,8 +40,38 @@ docker exec -it serpis-mqtt emqx ctl listeners | grep -E 'ssl:default|tcp:defaul
 # Expect both: ssl:default  ...:8883  running ; tcp:default ...:1883 running
 ```
 
+If `docker exec` fails because `serpis-mqtt` is restarting, check startup logs
+before debugging MQTT clients:
+
+```sh
+docker logs serpis-mqtt --tail 120
+# or, from deploy/:
+docker compose logs mosquitto --tail 120
+```
+
+The most common first-start failure is a root-owned bind mount:
+`mkdir: cannot create directory '/opt/emqx/data/configs': Permission denied`.
+Fix it from `deploy/` with:
+
+```sh
+sudo chown -R 1000:1000 emqx/data
+docker restart serpis-mqtt
+```
+
+If `emqx ctl` says `Node 'emqx@...' not responding to pings`, make sure the
+broker was recreated after the compose file was updated with the loopback node
+name:
+
+```sh
+docker compose up -d --force-recreate mosquitto
+```
+
+If the logs mention `wss:default(0.0.0.0:8084) : no_cert`, recreate with the
+compose file that disables the unused WS/WSS listeners. This deployment only
+needs TCP `1883` and MQTT-over-TLS `8883`.
+
 If a listener is missing, the cert paths in `emqx/emqx.conf` are usually wrong —
-check `docker compose logs serpis-mqtt`.
+check `docker logs serpis-mqtt`.
 
 ---
 
@@ -114,10 +144,20 @@ PUBID='<pubid>'; DPASS='<password from step 3>'
 HOST=mqtt.serpis.id          # must match the cert CN; resolve it to the VPS
 ```
 
+Choose the TLS option for the machine running `mosquitto_sub`:
+
+```sh
+# Debian/Ubuntu:
+TLS_OPTS='--capath /etc/ssl/certs'
+
+# macOS/Homebrew mosquitto:
+TLS_OPTS='--tls-use-os-certs'
+```
+
 **4a. Correct creds + own topic → connects and subscribes:**
 
 ```sh
-mosquitto_sub -h "$HOST" -p 8883 --capath /etc/ssl/certs \
+mosquitto_sub -h "$HOST" -p 8883 $TLS_OPTS \
   -u "$PUBID" -P "$DPASS" -t "serpis/ir/$PUBID/cmd" -v -d
 # Connection holds open. Leave it running for step 5/6.
 ```
@@ -125,7 +165,7 @@ mosquitto_sub -h "$HOST" -p 8883 --capath /etc/ssl/certs \
 **4b. Wrong password → rejected (CONNACK "not authorized"):**
 
 ```sh
-mosquitto_sub -h "$HOST" -p 8883 --capath /etc/ssl/certs \
+mosquitto_sub -h "$HOST" -p 8883 $TLS_OPTS \
   -u "$PUBID" -P "deadbeef" -t "serpis/ir/$PUBID/cmd" -d
 # => Connection Refused: not authorised.  (MQTT5 reason 135 / MQTT3 rc 5)
 ```
@@ -133,7 +173,7 @@ mosquitto_sub -h "$HOST" -p 8883 --capath /etc/ssl/certs \
 **4c. Right creds but someone else's topic → publish/subscribe denied + dropped:**
 
 ```sh
-mosquitto_pub -h "$HOST" -p 8883 --capath /etc/ssl/certs \
+mosquitto_pub -h "$HOST" -p 8883 $TLS_OPTS \
   -u "$PUBID" -P "$DPASS" -t "serpis/ir/SOMEONE_ELSE/cmd" -m hi -d
 # => disconnected (no_match = deny, deny_action = disconnect)
 ```
@@ -149,7 +189,7 @@ hook secret or `CLAIM_SECRET_ENC_KEY` differs between this script and the server
 In a second terminal, subscribe to every device's events as the superuser:
 
 ```sh
-mosquitto_sub -h "$HOST" -p 8883 --capath /etc/ssl/certs \
+mosquitto_sub -h "$HOST" -p 8883 $TLS_OPTS \
   -u serpis-backend -P '<MQTT_PASSWORD>' -t 'serpis/ir/+/evt' -t 'serpis/ir/+/status' -v
 ```
 
@@ -157,7 +197,7 @@ Now, from the device session (step 4a is its own terminal), publish an event and
 confirm the superuser receives it:
 
 ```sh
-mosquitto_pub -h "$HOST" -p 8883 --capath /etc/ssl/certs \
+mosquitto_pub -h "$HOST" -p 8883 $TLS_OPTS \
   -u "$PUBID" -P "$DPASS" -t "serpis/ir/$PUBID/evt" -m '{"kind":"ack","ok":true}'
 # The superuser terminal prints: serpis/ir/<pubid>/evt {"kind":"ack","ok":true}
 ```
@@ -174,14 +214,14 @@ The device's connection sets a retained Last-Will of `offline` on
 
 ```sh
 # Connect a device session that declares the will, then watch the column:
-mosquitto_sub -h "$HOST" -p 8883 --capath /etc/ssl/certs \
+mosquitto_sub -h "$HOST" -p 8883 $TLS_OPTS \
   -u "$PUBID" -P "$DPASS" -t "serpis/ir/$PUBID/cmd" \
   --will-topic "serpis/ir/$PUBID/status" --will-payload offline --will-retain \
   -i "ir-$PUBID" &
 SUBPID=$!
 
 # Publish "online" like the firmware does on connect:
-mosquitto_pub -h "$HOST" -p 8883 --capath /etc/ssl/certs \
+mosquitto_pub -h "$HOST" -p 8883 $TLS_OPTS \
   -u "$PUBID" -P "$DPASS" -t "serpis/ir/$PUBID/status" -m online -r
 ```
 
@@ -234,5 +274,5 @@ device to "offline" without waiting out the freshness window. Re-check the SQL �
 When in doubt, tail both sides at once:
 
 ```sh
-docker compose logs -f app serpis-mqtt | grep -Ei 'mqtt|auth|acl'
+docker compose logs -f app mosquitto | grep -Ei 'mqtt|auth|acl'
 ```

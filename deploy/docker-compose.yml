@@ -26,7 +26,12 @@ services:
   mosquitto:
     image: emqx/emqx:5.8
     container_name: serpis-mqtt
+    hostname: serpis-mqtt
     restart: unless-stopped
+    environment:
+      EMQX_NODE__NAME: emqx@127.0.0.1
+      EMQX_LISTENERS__WS__DEFAULT__ENABLE: "false"
+      EMQX_LISTENERS__WSS__DEFAULT__ENABLE: "false"
     ports:
       - "8883:8883"     # TLS listener — devices reach it from the internet
     volumes:

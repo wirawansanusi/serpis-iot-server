@@ -27,7 +27,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   const { data, error } = await supabase
     .from("device_remotes")
-    .select("id, name, kind, ac_vendor, model_id, buttons:device_remote_buttons(id, label, command, sort_order)")
+    .select("id, name, kind, ac_vendor, model_id, brand, buttons:device_remote_buttons(id, label, command, sort_order)")
     .eq("device_id", params.id)
     .order("created_at", { ascending: true });
   if (error) {
@@ -41,6 +41,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     kind: r.kind,
     ac_vendor: r.ac_vendor,
     model_id: r.model_id,
+    brand: r.brand ?? null,
     buttons: ((r.buttons as ButtonRow[]) ?? [])
       .slice()
       .sort((a, b) => a.sort_order - b.sort_order)
@@ -73,6 +74,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   let kind = "other";
   let acVendor: string | null = null;
   let modelId: string | null = null;
+  let brand: string | null = null;
   let functions: { name: string; command: unknown; sort_order: number }[] = [];
 
   if (typeof body.model_id === "string") {
@@ -86,10 +88,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const brandRel = model.brand as unknown as { name: string } | { name: string }[] | null;
     const brandName = Array.isArray(brandRel) ? brandRel[0]?.name : brandRel?.name;
-    name = [brandName, model.name].filter(Boolean).join(" ") || model.name;
+    // Some catalog model names already lead with the brand ("Toshiba AC") —
+    // prepending unconditionally produced "Toshiba Toshiba AC".
+    const alreadyBranded =
+      !!brandName && model.name.toLowerCase().startsWith(brandName.toLowerCase());
+    name = !brandName || alreadyBranded ? model.name : `${brandName} ${model.name}`;
     kind = model.device_kind;
     acVendor = model.ac_vendor;
     modelId = model.id;
+    brand = brandName ?? null;
     functions = (model.ir_functions as { name: string; command: unknown; sort_order: number }[]) ?? [];
   } else if (typeof body.name === "string" && body.name.trim().length > 0) {
     name = body.name.trim().slice(0, 64);
@@ -108,8 +115,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       kind,
       ac_vendor: acVendor,
       model_id: modelId,
+      brand,
     })
-    .select("id, name, kind, ac_vendor, model_id")
+    .select("id, name, kind, ac_vendor, model_id, brand")
     .single();
   if (rErr) {
     console.error("[remotes POST]", rErr);
